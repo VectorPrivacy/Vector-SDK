@@ -81,13 +81,13 @@ To use the Vector Bot Library, add it as a dependency in your `Cargo.toml`:
 
 ```toml
 [dependencies]
-nostr_library = { path = "path/to/nostr_library" }
+vector_library = { path = "path/to/vector_library" }
 ```
 
 ## Usage
 
 ```rust
-use nostr_library::VectorBot;
+use vector_library::VectorBot;
 use nostr_sdk::prelude::*;
 
 #[tokio::main]

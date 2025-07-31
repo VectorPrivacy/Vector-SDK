@@ -2,7 +2,7 @@
 /target/
 /.examples/target/
 /examples/target/
-/nostr_library/target/
+/vector_library/target/
 
 # Cargo
 /.cargo/
