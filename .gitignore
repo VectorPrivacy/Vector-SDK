@@ -1,0 +1,22 @@
+# Rust
+/target/
+/.examples/target/
+/examples/target/
+/nostr_library/target/
+
+# Cargo
+/.cargo/
+
+# IDEs and editors
+/.idea/
+/.vscode/
+*.swp
+*.swo
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Misc
+*.rs.bk
+*.rs.bak

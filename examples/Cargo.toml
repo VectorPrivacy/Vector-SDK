@@ -1,0 +1,12 @@
+[package]
+name = "nostr_bot"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+nostr_library = { path = "../nostr_library" }
+nostr-sdk = { version = "0.42.0", features = ["nip04", "nip06", "nip44", "nip59", "nip96"] }
+tokio = { version = "1", features = ["full"] }
+reqwest = { version = "0.11", features = ["json"] }
+
+
