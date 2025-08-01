@@ -98,27 +98,19 @@ async fn main() -> Result<(), Box<dyn Error>> {
                                                                         // Create an AttachmentFile with the image data
                                                                         let bytes = img_response.bytes().await.unwrap().to_vec();
                                                                         let extension = match json.get("mimetype").and_then(|mimetype| mimetype.as_str()) {
-                                                                            // // Images
-                                                                            // "png" => "image/png",
-                                                                            // "jpg" | "jpeg" => "image/jpeg",
-                                                                            // "gif" => "image/gif",
-                                                                            // "webp" => "image/webp",
                                                                             Some("image/png") => "png",
                                                                             Some("image/jpeg") => "jpg",
                                                                             Some("image/gif") => "gif",
                                                                             Some("image/webp") => "webp",
-                                                                            Some(&_) => "png",
+                                                                            Some(_) => "png",
                                                                             None => "png",
                                                                         };
 
-                                                                        
                                                                         let attached_file = vector_library::AttachmentFile {
                                                                             bytes,
                                                                             img_meta: None,
                                                                             extension: extension.to_string(),
                                                                         };
-
-                                                                        //println!("Attached file: {:#?}", attached_file);
 
                                                                         // Send the image file
                                                                         let normal_chat = bot_clone.get_chat(sender).await;
@@ -144,7 +136,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                                             }
                                             Err(_) => "Error fetching cat image".to_string(),
                                         }
-                                    }
+                                    },
                                     _ => String::from(
                                         "Invalid command, send /help to see all commands.",
                                     ),

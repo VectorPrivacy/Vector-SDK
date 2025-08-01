@@ -46,7 +46,6 @@ pub async fn build_client(
     client.add_relay("wss://auth.nostr1.com").await.unwrap();
     client.add_relay("wss://nostr.computingcache.com").await.unwrap();
 
-
     // Connect to relays
     client.connect().await;
 

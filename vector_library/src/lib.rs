@@ -12,7 +12,6 @@ use once_cell::sync::OnceCell;
 use crate::client::build_client;
 use sha2::{Sha256, Digest};
 
-
 static TRUSTED_PRIVATE_NIP96: &str = "https://medea-1-swiss.vectorapp.io";
 static PRIVATE_NIP96_CONFIG: OnceCell<ServerConfig> = OnceCell::new();
 
@@ -62,7 +61,6 @@ pub struct Channel {
     recipient: PublicKey,
     base_bot: VectorBot,
 }
-
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
 pub struct ImageMetadata {
@@ -248,6 +246,18 @@ impl Channel {
         }
     }
 
+    /// Sends a private file to the recipient.
+    ///
+    /// This function handles file encryption, uploads the file to a server,
+    /// and sends a notification to the recipient with the file information.
+    ///
+    /// # Arguments
+    ///
+    /// * `file` - The file to send, wrapped in an Option.
+    ///
+    /// # Returns
+    ///
+    /// `true` if the file was sent successfully, `false` otherwise.
     pub async fn send_private_file(&self, file: Option<AttachmentFile>) -> bool {
         let attached_file = file.unwrap();
 
@@ -290,7 +300,6 @@ impl Channel {
             Ok(conf) => PRIVATE_NIP96_CONFIG.set(conf),
             Err(_) => return false
         };
-        
 
         // Create a progress callback for file uploads
         let progress_callback: crate::upload::ProgressCallback = Box::new(move |percentage, _| {
@@ -300,12 +309,11 @@ impl Channel {
             Ok(())
         });
 
-
         let conf = PRIVATE_NIP96_CONFIG.wait();
         let final_attachment_rumor = {
             // Upload the file with both a Progress Emitter and multiple re-try attempts in case of connection instability
             match crate::upload::upload_data_with_progress(&self.base_bot.keys, &conf, enc_file, Some(mime_type), None, progress_callback, Some(3), Some(std::time::Duration::from_secs(2))).await {
-                Ok(url) => {     
+                Ok(url) => {
 
                     // Create the attachment rumor
                     let mut attachment_rumor = EventBuilder::new(Kind::from_u16(15), url.to_string())
@@ -318,7 +326,6 @@ impl Channel {
                         .tag(Tag::custom(TagKind::custom("decryption-key"), [params.key.as_str()]))
                         .tag(Tag::custom(TagKind::custom("decryption-nonce"), [params.nonce.as_str()]))
                         .tag(Tag::custom(TagKind::custom("ox"), [file_hash.clone()]));
-
 
                     // Append image metadata if available
                     if let Some(ref img_meta) = attached_file.img_meta {
@@ -367,7 +374,7 @@ impl Channel {
             Err(e) => {
                 // Network or other error - log and retry if we haven't exceeded attempts
                 eprintln!("Failed to send message: {:?}", e);
-                
+
                 return false;
             }
         }

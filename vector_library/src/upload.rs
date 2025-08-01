@@ -13,6 +13,16 @@ use tokio::sync::mpsc;
 use std::sync::{Arc, Mutex};
 
 /// Makes a reqwest client
+///
+/// Creates a reqwest Client with optional proxy configuration.
+///
+/// # Arguments
+///
+/// * `proxy` - Optional proxy address for the client.
+///
+/// # Returns
+///
+/// A Result containing the configured Client or an Error.
 fn make_client(proxy: Option<SocketAddr>) -> Result<Client, Error> {
     let client: Client = {
         let mut builder = Client::builder()
@@ -22,7 +32,7 @@ fn make_client(proxy: Option<SocketAddr>) -> Result<Client, Error> {
             // This allows large files to upload without timing out
             .pool_idle_timeout(std::time::Duration::from_secs(90))
             .pool_max_idle_per_host(2);
-            
+
         if let Some(proxy) = proxy {
             let proxy = format!("socks5h://{proxy}");
             use reqwest::Proxy;
@@ -41,28 +51,38 @@ struct ProgressTrackingStream {
 }
 
 impl ProgressTrackingStream {
+    /// Creates a new ProgressTrackingStream
+    ///
+    /// # Arguments
+    ///
+    /// * `data` - The data to be sent through the stream
+    /// * `bytes_sent` - Counter for tracking bytes sent
+    ///
+    /// # Returns
+    ///
+    /// A new ProgressTrackingStream
     fn new(data: Vec<u8>, bytes_sent: Arc<Mutex<u64>>) -> Self {
         let (tx, rx) = mpsc::channel(8); // Buffer size of 8 chunks
-        
+
         // Spawn a background task to feed the stream
         tokio::spawn(async move {
             let chunk_size = 64 * 1024; // 64 KB chunks
             let mut position = 0;
-            
+
             while position < data.len() {
                 let end = std::cmp::min(position + chunk_size, data.len());
                 let chunk = data[position..end].to_vec();
                 let chunk_size = chunk.len();
-                
+
                 // Send chunk through channel
                 if tx.send(Ok(chunk)).await.is_err() {
                     break; // Receiver was dropped
                 }
-                
+
                 position += chunk_size;
             }
         });
-        
+
         Self {
             bytes_sent,
             inner: rx,
@@ -72,13 +92,13 @@ impl ProgressTrackingStream {
 
 impl futures_util::Stream for ProgressTrackingStream {
     type Item = Result<Vec<u8>, std::io::Error>;
-    
+
     fn poll_next(
         mut self: std::pin::Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
     ) -> std::task::Poll<Option<Self::Item>> {
         use std::task::Poll;
-        
+
         match self.inner.poll_recv(cx) {
             Poll::Ready(Some(result)) => {
                 // Update the bytes sent counter
@@ -95,6 +115,9 @@ impl futures_util::Stream for ProgressTrackingStream {
 }
 
 /// Progress callback function type
+///
+/// A boxed function that takes an optional percentage and bytes sent,
+/// and returns a Result.
 pub type ProgressCallback = Box<dyn Fn(Option<u8>, Option<u64>) -> Result<(), String> + Send + Sync>;
 
 /// Uploads data to a NIP-96 server with progress callback
@@ -120,16 +143,16 @@ where
 {
     let retry_count = retry_count.unwrap_or(0);
     let retry_spacing = retry_spacing.unwrap_or(std::time::Duration::from_secs(1));
-    
+
     let mut last_error = None;
-    
+
     for attempt in 0..=retry_count {
         // Log retry attempt if not the first attempt
         if attempt > 0 {
             // Sleep before retry
             tokio::time::sleep(retry_spacing).await;
         }
-        
+
         match upload_attempt(
             signer,
             desc,
@@ -145,7 +168,7 @@ where
             }
         }
     }
-    
+
     // All attempts failed, return the last error
     Err(last_error.unwrap_or_else(|| Error::UploadError("No upload attempts were made".to_string())))
 }
@@ -170,7 +193,7 @@ where
     // Create shared counter for tracking upload progress
     let bytes_sent = Arc::new(Mutex::new(0u64));
     let total_size = file_data.len() as u64;
-    
+
     // Report initial progress (0%)
     progress_callback(Some(0), Some(0)).map_err(|e| Error::UploadError(e))?;
 
@@ -181,18 +204,18 @@ where
     let file_part = {
         let tracking_stream = ProgressTrackingStream::new(file_data.clone(), bytes_sent.clone());
         let body = Body::wrap_stream(tracking_stream);
-        
+
         let mut part = Part::stream(body)
             .file_name("filename");
-            
+
         // Set MIME type if provided
         if let Some(mime_str) = mime_type {
             part = part.mime_str(mime_str).map_err(|_| Error::MultipartMimeError)?;
         }
-        
+
         part
     };
-    
+
     let form = multipart::Form::new().part("file", file_part);
 
     // Launch upload as a future, but don't await it yet
@@ -201,16 +224,16 @@ where
         .header("Authorization", nip98_auth)
         .multipart(form)
         .send();
-    
+
     // Create a future that polls the bytes_sent counter periodically
     let mut last_percentage = 0;
     let mut poll_interval = tokio::time::interval(tokio::time::Duration::from_millis(100));
-    
+
     // Track stalled uploads
     let mut last_bytes_sent = 0u64;
     let mut stall_counter = 0;
     const STALL_THRESHOLD: u32 = 200; // 20 seconds (200 * 100ms) without progress
-    
+
     // Use tokio::select to concurrently wait for the response and report progress
     let response = loop {
         tokio::select! {
@@ -226,7 +249,7 @@ where
                 } else {
                     0
                 };
-                
+
                 // Check if upload is stalled
                 if current_bytes == last_bytes_sent && percentage < 100 && percentage > 0 {
                     stall_counter += 1;
@@ -238,7 +261,7 @@ where
                     stall_counter = 0;
                     last_bytes_sent = current_bytes;
                 }
-                
+
                 // Only report when percentage changes to reduce events
                 if percentage > last_percentage {
                     if let Err(e) = progress_callback(Some(percentage), Some(current_bytes)) {
@@ -249,10 +272,10 @@ where
             }
         }
     };
-    
+
     // Report 100% completion
     progress_callback(Some(100), Some(total_size)).map_err(|e| Error::UploadError(e))?;
-    
+
     // Decode response
     let res: UploadResponse = response.json().await?;
 
