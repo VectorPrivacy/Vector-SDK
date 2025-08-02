@@ -1208,16 +1208,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "nostr_bot"
-version = "0.1.0"
-dependencies = [
- "nostr-sdk",
- "reqwest 0.11.27",
- "tokio",
- "vector_library",
-]
-
-[[package]]
 name = "object"
 version = "0.36.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2367,6 +2357,16 @@ name = "vcpkg"
 version = "0.2.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "accd4ea62f7bb7a82fe23066fb0957d48ef677f6eeb8215f372f52e48bb32426"
+
+[[package]]
+name = "vector_bot"
+version = "0.1.0"
+dependencies = [
+ "nostr-sdk",
+ "reqwest 0.11.27",
+ "tokio",
+ "vector_library",
+]
 
 [[package]]
 name = "vector_library"

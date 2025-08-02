@@ -264,8 +264,6 @@ impl Channel {
         // Calculate the file hash first (before encryption)
         let file_hash = calculate_file_hash(&attached_file.bytes);
 
-        let mut final_output = None;
-
         // Format a Mime Type from the file extension
         let mime_type = match attached_file.extension.as_str() {
             // Images
@@ -303,7 +301,7 @@ impl Channel {
 
         // Create a progress callback for file uploads
         let progress_callback: crate::upload::ProgressCallback = Box::new(move |percentage, _| {
-                if let Some(pct) = percentage {
+                if let Some(_pct) = percentage {
                     println!("{:#?}", percentage)
                 }
             Ok(())
@@ -358,7 +356,6 @@ impl Channel {
                 if !output.success.is_empty() {
                     // Success! Message was acknowledged by at least one relay
                     println!("Success");
-                    final_output = Some(output);
                     return true;
                 } else if output.failed.is_empty() {
                     // No success but also no failures - this might be a temporary network issue

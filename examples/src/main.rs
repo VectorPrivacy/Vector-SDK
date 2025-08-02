@@ -14,7 +14,7 @@ use reqwest::Client;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     // A master npub for communicating in case of issues
-    let master_npub = PublicKey::from_bech32("npub1f88ah0k9hp2puakdjt85ve6kzkmngjy2l6k0llkav9mamgprgg7stc3c45")?;
+    let master_npub = PublicKey::from_bech32("npub18mqgner0a55ll542h5ysrgy9qsyvlv4g994rk8d8f3lt8e9ayltqclw0ja")?;
 
     // Generate new random keys
     let keys = Keys::generate();
@@ -115,8 +115,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
                                                                         // Send the image file
                                                                         let normal_chat = bot_clone.get_chat(sender).await;
                                                                         println!("chat channel created");
-                                                                        let sendAttatched = normal_chat.send_private_file(Some(attached_file)).await;
-                                                                        println!("AttatchedMessageSend: {:#?}", sendAttatched);
+                                                                        let send_attatched = normal_chat.send_private_file(Some(attached_file)).await;
+                                                                        println!("AttatchedMessageSend: {:#?}", send_attatched);
                                                                         "Here is your cat image!".to_string()
                                                                     } else {
                                                                         "Failed to fetch cat image".to_string()
