@@ -22,6 +22,8 @@ The library is organized into several modules, each responsible for a specific a
 3. **Client**: Functions for building and configuring the Nostr client.
 4. **Metadata**: Functions for creating and managing bot metadata.
 5. **Subscription**: Functions for setting up event subscriptions.
+6. **Crypto**: Functions for encryption and decryption.
+7. **Upload**: Functions for handling file uploads.
 
 ### High-Level Architecture
 
@@ -43,8 +45,8 @@ The library is organized into several modules, each responsible for a specific a
 | + new()             |
 | + get_chat()        |
 +---------------------+
-         |
-         v
+          |
+          v
 +---------------------+
 |      Channel        |
 |---------------------|
@@ -73,6 +75,19 @@ The library is organized into several modules, each responsible for a specific a
 | + create_gift_wrap_|
 |   subscription()    |
 +---------------------+
+
++---------------------+
+|      Crypto        |
+|---------------------|
+| + generate_encryption_params() |
+| + encrypt_data()   |
++---------------------+
+
++---------------------+
+|      Upload        |
+|---------------------|
+| + upload_data_with_progress() |
++---------------------+
 ```
 
 ## Installation
@@ -85,6 +100,8 @@ vector_library = { path = "path/to/vector_library" }
 ```
 
 ## Usage
+
+### Sending a Text Message
 
 ```rust
 use vector_library::VectorBot;
@@ -105,6 +122,44 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // Send a private message
     let success = chat.send_private_message("Hello, world!").await;
     println!("Message sent: {}", success);
+
+    Ok(())
+}
+```
+
+### Sending an Image
+
+```rust
+use vector_library::{VectorBot, AttachmentFile};
+use nostr_sdk::prelude::*;
+use std::fs;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn Error>> {
+    // Generate new random keys
+    let keys = Keys::generate();
+
+    // Create a new VectorBot with default metadata
+    let bot = VectorBot::quick(keys).await;
+
+    // Get a chat channel for a specific public key
+    let chat_npub = PublicKey::from_bech32("npub1example...")?;
+    let chat = bot.get_chat(chat_npub).await;
+
+    // Read image file
+    let image_path = "path/to/your/image.png";
+    let image_data = fs::read(image_path)?;
+
+    // Create an AttachmentFile
+    let attachment = AttachmentFile {
+        bytes: image_data,
+        img_meta: None, // Optional: Add image metadata if available
+        extension: "png".to_string(),
+    };
+
+    // Send the image
+    let success = chat.send_private_file(Some(attachment)).await;
+    println!("Image sent: {}", success);
 
     Ok(())
 }
@@ -132,11 +187,23 @@ The `Metadata` module contains functions for creating and managing bot metadata,
 
 The `Subscription` module contains functions for setting up event subscriptions, such as gift wrap events.
 
+### Crypto
+
+The `Crypto` module provides functions for generating encryption parameters and encrypting data using AES-256-GCM.
+
+### Upload
+
+The `Upload` module provides functions for uploading data to a NIP-96 server with progress tracking.
+
 ## Dependencies
 
 - `nostr_sdk`: The Nostr SDK for Rust, providing the core functionality for interacting with the Nostr protocol.
 - `url`: For handling URLs in metadata.
 - `tokio`: For asynchronous runtime.
+- `aes`: For AES encryption.
+- `aes_gcm`: For AES-GCM encryption.
+- `reqwest`: For HTTP requests.
+- `sha2`: For SHA-256 hashing.
 
 ## License
 
