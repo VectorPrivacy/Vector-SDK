@@ -1,6 +1,7 @@
 extern crate nostr_sdk;
 use nostr_sdk::prelude::*;
 use url::Url;
+use log::{debug, error};
 
 pub mod client;
 pub mod metadata;
@@ -22,70 +23,31 @@ static PRIVATE_NIP96_CONFIG: OnceCell<ServerConfig> = OnceCell::new();
 #[derive(Clone)]
 pub struct VectorBot {
     /// The keys used to sign messages.
-    #[allow(dead_code)]
     keys: Keys,
 
     /// The name of the user.
-    #[allow(dead_code)]
     name: String,
 
     /// The display name of the user.
-    #[allow(dead_code)]
     display_name: String,
 
     /// A brief description about the user.
-    #[allow(dead_code)]
     about: String,
 
     /// The URL of the user's profile picture.
-    #[allow(dead_code)]
     picture: Url,
 
     /// The URL of the user's banner.
-    #[allow(dead_code)]
     banner: Url,
 
     /// The NIP05 identifier.
-    #[allow(dead_code)]
     nip05: String,
 
     /// The LUD16 payment pointer.
-    #[allow(dead_code)]
     lud16: String,
 
     /// The vector client.
     pub client: Client,
-}
-
-pub struct Channel {
-    recipient: PublicKey,
-    base_bot: VectorBot,
-}
-
-#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
-pub struct ImageMetadata {
-    /// The Blurhash preview
-    pub blurhash: String,
-    /// Image pixel width
-    pub width: u32,
-    /// Image pixel height
-    pub height: u32,
-}
-
-/// A simple pre-upload format to associate a byte stream with a file extension
-#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
-pub struct AttachmentFile {
-    pub bytes: Vec<u8>,
-    // /// Image metadata (for images only)
-    pub img_meta: Option<ImageMetadata>,
-    pub extension: String,
-}
-
-/// Calculate SHA-256 hash of file data
-pub fn calculate_file_hash(data: &[u8]) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(data);
-    hex::encode(hasher.finalize())
 }
 
 impl VectorBot {
@@ -102,36 +64,16 @@ impl VectorBot {
     ///
     /// A new VectorBot instance with default metadata.
     pub async fn quick(keys: Keys) -> Self {
-        let metadata_name = "username".to_string();
-        let metadata_display_name = "My Username".to_string();
-        let metadata_about = "Description".to_string();
-        let metadata_picture = Url::parse("https://example.com/avatar.png").expect("Invalid URL");
-        let metadata_banner = Url::parse("https://example.com/banner.png").expect("Invalid URL");
-        let metadata_nip05 = "username@example.com".to_string();
-        let metadata_lud16 = "pay@yukikishimoto.com".to_string();
-
-        let client = build_client(
-            keys.clone(),
-            metadata_name.clone(),
-            metadata_display_name.clone(),
-            metadata_about.clone(),
-            metadata_picture.clone(),
-            metadata_banner.clone(),
-            metadata_nip05.clone(),
-            metadata_lud16.clone(),
-        ).await;
-
-        Self {
+        Self::new_with_urls(
             keys,
-            name: metadata_name,
-            display_name: metadata_display_name,
-            about: metadata_about,
-            picture: metadata_picture,
-            banner: metadata_banner,
-            nip05: metadata_nip05,
-            lud16: metadata_lud16,
-            client,
-        }
+            "username".to_string(),
+            "My Username".to_string(),
+            "Description".to_string(),
+            "https://example.com/avatar.png",
+            "https://example.com/banner.png",
+            "username@example.com".to_string(),
+            "pay@yukikishimoto.com".to_string(),
+        ).await
     }
 
     /// Creates a new VectorBot with custom metadata.
@@ -163,8 +105,66 @@ impl VectorBot {
         nip05: String,
         lud16: String,
     ) -> Self {
-        let picture_url = Url::parse(picture).expect("Invalid URL");
-        let banner_url = Url::parse(banner).expect("Invalid URL");
+        Self::new_with_urls(
+            keys,
+            name,
+            display_name,
+            about,
+            picture,
+            banner,
+            nip05,
+            lud16,
+        ).await
+    }
+
+    /// Creates a new VectorBot with the given metadata.
+    ///
+    /// This is a helper function that handles URL parsing and client building.
+    async fn new_with_urls(
+        keys: Keys,
+        name: String,
+        display_name: String,
+        about: String,
+        picture: &str,
+        banner: &str,
+        nip05: String,
+        lud16: String,
+    ) -> Self {
+        let picture_url = match Url::parse(picture) {
+            Ok(url) => url,
+            Err(e) => {
+                error!("Invalid picture URL: {}", e);
+                return Self {
+                    keys: keys.clone(),
+                    name,
+                    display_name,
+                    about,
+                    picture: Url::parse("https://example.com/default.png").unwrap(),
+                    banner: Url::parse("https://example.com/default.png").unwrap(),
+                    nip05,
+                    lud16,
+                    client: Client::builder().signer(keys.clone()).build(),
+                };
+            }
+        };
+
+        let banner_url = match Url::parse(banner) {
+            Ok(url) => url,
+            Err(e) => {
+                error!("Invalid banner URL: {}", e);
+                return Self {
+                    keys: keys.clone(),
+                    name,
+                    display_name,
+                    about,
+                    picture: picture_url,
+                    banner: Url::parse("https://example.com/default.png").unwrap(),
+                    nip05,
+                    lud16,
+                    client: Client::builder().signer(keys.clone()).build(),
+                };
+            }
+        };
 
         let client = build_client(
             keys.clone(),
@@ -175,6 +175,7 @@ impl VectorBot {
             banner_url.clone(),
             nip05.clone(),
             lud16.clone(),
+            None,
         ).await;
 
         Self {
@@ -203,9 +204,14 @@ impl VectorBot {
     ///
     /// A Channel instance for communicating with the specified recipient.
     pub async fn get_chat(&self, chat_npub: PublicKey) -> Channel {
-        let chat = Channel::new(chat_npub, self).await;
-        chat
+        Channel::new(chat_npub, self).await
     }
+}
+
+/// Represents a communication channel with a specific recipient.
+pub struct Channel {
+    recipient: PublicKey,
+    base_bot: VectorBot,
 }
 
 impl Channel {
@@ -236,13 +242,13 @@ impl Channel {
     ///
     /// `true` if the message was sent successfully, `false` otherwise.
     pub async fn send_private_message(&self, message: &str) -> bool {
-        println!("pubkey: {:#?}", self.recipient);
+        debug!("Sending private message to: {:?}", self.recipient);
         match self.base_bot.client.send_private_msg(self.recipient, message, []).await {
-            Ok(output) => {
-                println!("{:#?}",output);
-                true
-            },
-            Err(_) => false,
+            Ok(_) => true,
+            Err(e) => {
+                error!("Failed to send private message: {:?}", e);
+                false
+            }
         }
     }
 
@@ -259,123 +265,255 @@ impl Channel {
     ///
     /// `true` if the file was sent successfully, `false` otherwise.
     pub async fn send_private_file(&self, file: Option<AttachmentFile>) -> bool {
-        let attached_file = file.unwrap();
+        let attached_file = match file {
+            Some(f) => f,
+            None => {
+                error!("No file provided for sending");
+                return false;
+            }
+        };
 
         // Calculate the file hash first (before encryption)
         let file_hash = calculate_file_hash(&attached_file.bytes);
 
         // Format a Mime Type from the file extension
-        let mime_type = match attached_file.extension.as_str() {
-            // Images
-            "png" => "image/png",
-            "jpg" | "jpeg" => "image/jpeg",
-            "gif" => "image/gif",
-            "webp" => "image/webp",
-            // Audio
-            "wav" => "audio/wav",
-            "mp3" => "audio/mp3",
-            "flac" => "audio/flac",
-            "ogg" => "audio/ogg",
-            "m4a" => "audio/mp4",
-            "aac" => "audio/aac",
-            // Videos
-            "mp4" => "video/mp4",
-            "webm" => "video/webm",
-            "mov" => "video/quicktime",
-            "avi" => "video/x-msvideo",
-            "mkv" => "video/x-matroska",
-            // Unknown
-            _ => "application/octet-stream",
+        let mime_type = get_mime_type(&attached_file.extension);
+
+        // Generate encryption parameters and encrypt the file
+        let params_result = crypto::generate_encryption_params();
+        let params = match params_result {
+            Ok(p) => p,
+            Err(err) => {
+                error!("Failed to generate encryption parameters: {}", err);
+                return false;
+            }
         };
 
-        let params = crypto::generate_encryption_params();
-        let enc_file = crypto::encrypt_data(attached_file.bytes.as_slice(), &params).unwrap();
+        let enc_file = match crypto::encrypt_data(attached_file.bytes.as_slice(), &params) {
+            Ok(data) => data,
+            Err(err) => {
+                error!("Failed to encrypt file: {}", err);
+                return false;
+            }
+        };
         let file_size = enc_file.len();
 
-        use nostr_sdk::nips::nip96::get_server_config;
-
-        let _ = match get_server_config(Url::parse(TRUSTED_PRIVATE_NIP96).unwrap(), None).await {
-            Ok(conf) => PRIVATE_NIP96_CONFIG.set(conf),
-            Err(_) => return false
+        // Get server config
+        let conf = match get_server_config().await {
+            Ok(c) => c,
+            Err(err) => {
+                error!("Failed to get server config: {}", err);
+                return false;
+            }
         };
 
         // Create a progress callback for file uploads
-        let progress_callback: crate::upload::ProgressCallback = Box::new(move |percentage, _| {
-                if let Some(_pct) = percentage {
-                    println!("{:#?}", percentage)
-                }
-            Ok(())
-        });
+        let progress_callback = create_progress_callback();
 
-        let conf = PRIVATE_NIP96_CONFIG.wait();
-        let final_attachment_rumor = {
-            // Upload the file with both a Progress Emitter and multiple re-try attempts in case of connection instability
-            match crate::upload::upload_data_with_progress(&self.base_bot.keys, &conf, enc_file, Some(mime_type), None, progress_callback, Some(3), Some(std::time::Duration::from_secs(2))).await {
-                Ok(url) => {
-
-                    // Create the attachment rumor
-                    let mut attachment_rumor = EventBuilder::new(Kind::from_u16(15), url.to_string())
-
-                    // Append decryption keys and file metadata
-                        .tag(Tag::public_key(self.recipient))
-                        .tag(Tag::custom(TagKind::custom("file-type"), [mime_type]))
-                        .tag(Tag::custom(TagKind::custom("size"), [file_size.to_string()]))
-                        .tag(Tag::custom(TagKind::custom("encryption-algorithm"), ["aes-gcm"]))
-                        .tag(Tag::custom(TagKind::custom("decryption-key"), [params.key.as_str()]))
-                        .tag(Tag::custom(TagKind::custom("decryption-nonce"), [params.nonce.as_str()]))
-                        .tag(Tag::custom(TagKind::custom("ox"), [file_hash.clone()]));
-
-                    // Append image metadata if available
-                    if let Some(ref img_meta) = attached_file.img_meta {
-                        attachment_rumor = attachment_rumor
-                            .tag(Tag::custom(TagKind::custom("blurhash"), [&img_meta.blurhash]))
-                            .tag(Tag::custom(TagKind::custom("dim"), [format!("{}x{}", img_meta.width, img_meta.height)]));
-                    }
-
-                    println!("Rumor: {:#?}",attachment_rumor);
-                    attachment_rumor
-                },
-                Err(_) => {
-                    return false
-                }
-            }
-
-        };
-
-        let built_rumor = final_attachment_rumor.build(self.base_bot.keys.public_key());
-
-        println!("{:#?}", &self.recipient);
-        println!("{:#?}", built_rumor.clone());
-        match self.base_bot.client
-            .gift_wrap(&self.recipient, built_rumor.clone(), [])
-            .await
-        {
-            Ok(output) => {
-                println!("SENT: {:#?}",output);
-                // Check if at least one relay acknowledged the message
-                if !output.success.is_empty() {
-                    // Success! Message was acknowledged by at least one relay
-                    println!("Success");
-                    return true;
-                } else if output.failed.is_empty() {
-                    // No success but also no failures - this might be a temporary network issue
-                    // Continue retrying
-                    println!("No success but no failures");
-                } else {
-                    println!("Failed");
-                    // We have failures but no successes
-                    // Final attempt failed
-                    return false;
-                }
-            }
-            Err(e) => {
-                // Network or other error - log and retry if we haven't exceeded attempts
-                eprintln!("Failed to send message: {:?}", e);
-
+        // Upload the file
+        let url = match upload_file(&self.base_bot.keys, &conf, &enc_file, &mime_type, progress_callback).await {
+            Ok(u) => u,
+            Err(err) => {
+                error!("Failed to upload file: {}", err);
                 return false;
             }
+        };
+
+        // Create and send the attachment rumor
+        if let Err(err) = send_attachment_rumor(&self.base_bot, &self.recipient, &url, &attached_file, &params, &file_hash, file_size, &mime_type).await {
+            error!("Failed to send attachment rumor: {}", err);
+            return false;
         }
 
-        false
+        true
     }
+}
+
+/// Derives the MIME type from a file extension.
+///
+/// # Arguments
+///
+/// * `extension` - The file extension.
+///
+/// # Returns
+///
+/// The MIME type as a string.
+fn get_mime_type(extension: &str) -> &str {
+    match extension.to_lowercase().as_str() {
+        // Images
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "gif" => "image/gif",
+        "webp" => "image/webp",
+        // Audio
+        "wav" => "audio/wav",
+        "mp3" => "audio/mp3",
+        "flac" => "audio/flac",
+        "ogg" => "audio/ogg",
+        "m4a" => "audio/mp4",
+        "aac" => "audio/aac",
+        // Videos
+        "mp4" => "video/mp4",
+        "webm" => "video/webm",
+        "mov" => "video/quicktime",
+        "avi" => "video/x-msvideo",
+        "mkv" => "video/x-matroska",
+        // Unknown
+        _ => "application/octet-stream",
+    }
+}
+
+/// Creates a progress callback for file uploads.
+///
+/// # Returns
+///
+/// A boxed progress callback function.
+fn create_progress_callback() -> crate::upload::ProgressCallback {
+    Box::new(move |percentage, _| {
+        if let Some(pct) = percentage {
+            println!("Upload progress: {}%", pct);
+        }
+        Ok(())
+    })
+}
+
+/// Gets the server configuration for file uploads.
+///
+/// # Returns
+///
+/// A Result containing the server configuration.
+async fn get_server_config() -> Result<ServerConfig, String> {
+    let url = Url::parse(TRUSTED_PRIVATE_NIP96).map_err(|_| "Invalid URL")?;
+    let conf = nostr_sdk::nips::nip96::get_server_config(url, None).await.map_err(|e| e.to_string())?;
+    PRIVATE_NIP96_CONFIG.set(conf.clone()).map_err(|_| "Failed to set server config")?;
+    Ok(conf)
+}
+
+/// Uploads a file to the server with progress tracking.
+///
+/// # Arguments
+///
+/// * `keys` - The keys for authentication.
+/// * `conf` - The server configuration.
+/// * `file_data` - The file data to upload.
+/// * `mime_type` - The MIME type of the file.
+/// * `progress_callback` - The progress callback function.
+///
+/// # Returns
+///
+/// A Result containing the URL of the uploaded file.
+async fn upload_file(
+    keys: &Keys,
+    conf: &ServerConfig,
+    file_data: &[u8],
+    mime_type: &str,
+    progress_callback: crate::upload::ProgressCallback,
+) -> Result<Url, String> {
+    let _retry_count = 3;
+    let _retry_spacing = std::time::Duration::from_secs(2);
+
+    let upload_config = upload::UploadConfig::default();
+    let upload_params = upload::UploadParams::default();
+
+    crate::upload::upload_data_with_progress(
+        keys,
+        conf,
+        file_data.to_vec(),
+        Some(mime_type),
+        None,
+        progress_callback,
+        Some(upload_params),
+        Some(upload_config),
+    ).await.map_err(|e| e.to_string())
+}
+
+/// Sends an attachment rumor to the recipient.
+///
+/// # Arguments
+///
+/// * `bot` - A reference to the VectorBot.
+/// * `recipient` - The recipient's public key.
+/// * `url` - The URL of the uploaded file.
+/// * `file` - A reference to the AttachmentFile.
+/// * `params` - A reference to the encryption parameters.
+/// * `file_hash` - The hash of the file.
+/// * `file_size` - The size of the file.
+/// * `mime_type` - The MIME type of the file.
+///
+/// # Returns
+///
+/// A Result indicating success or failure.
+async fn send_attachment_rumor(
+    bot: &VectorBot,
+    recipient: &PublicKey,
+    url: &Url,
+    file: &AttachmentFile,
+    params: &crypto::EncryptionParams,
+    file_hash: &str,
+    file_size: usize,
+    mime_type: &str,
+) -> Result<(), String> {
+    // Create the attachment rumor
+    let mut attachment_rumor = EventBuilder::new(Kind::from_u16(15), url.to_string())
+        .tag(Tag::public_key(*recipient))
+        .tag(Tag::custom(TagKind::custom("file-type"), [mime_type]))
+        .tag(Tag::custom(TagKind::custom("size"), [file_size.to_string()]))
+        .tag(Tag::custom(TagKind::custom("encryption-algorithm"), ["aes-gcm"]))
+        .tag(Tag::custom(TagKind::custom("decryption-key"), [params.key.as_str()]))
+        .tag(Tag::custom(TagKind::custom("decryption-nonce"), [params.nonce.as_str()]))
+        .tag(Tag::custom(TagKind::custom("ox"), [file_hash]));
+
+    // Append image metadata if available
+    if let Some(ref img_meta) = file.img_meta {
+        attachment_rumor = attachment_rumor
+            .tag(Tag::custom(TagKind::custom("blurhash"), [&img_meta.blurhash]))
+            .tag(Tag::custom(TagKind::custom("dim"), [format!("{}x{}", img_meta.width, img_meta.height)]));
+    }
+
+    let built_rumor = attachment_rumor.build(bot.keys.public_key());
+
+    debug!("Sending attachment rumor: {:?}", built_rumor);
+
+    match bot.client.gift_wrap(recipient, built_rumor.clone(), []).await {
+        Ok(output) => {
+            if output.success.is_empty() && !output.failed.is_empty() {
+                error!("Failed to send attachment rumor: {:?}", output);
+                return Err("Failed to send attachment rumor".to_string());
+            }
+            Ok(())
+        },
+        Err(e) => {
+            error!("Error sending attachment rumor: {:?}", e);
+            Err(format!("Error sending attachment rumor: {:?}", e))
+        }
+    }
+}
+
+/// Calculate SHA-256 hash of file data
+pub fn calculate_file_hash(data: &[u8]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(data);
+    hex::encode(hasher.finalize())
+}
+
+/// Represents metadata about an image file.
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
+pub struct ImageMetadata {
+    /// The Blurhash preview
+    pub blurhash: String,
+    /// Image pixel width
+    pub width: u32,
+    /// Image pixel height
+    pub height: u32,
+}
+
+/// Represents a file attachment with metadata.
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+pub struct AttachmentFile {
+    /// The file bytes
+    pub bytes: Vec<u8>,
+    /// Image metadata (for images only)
+    pub img_meta: Option<ImageMetadata>,
+    /// The file extension
+    pub extension: String,
 }
