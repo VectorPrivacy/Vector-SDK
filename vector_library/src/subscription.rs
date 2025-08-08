@@ -1,5 +1,5 @@
 use nostr_sdk::prelude::*;
-use thiserror::Error;
+// Removed unused import
 use std::fmt;
 
 /// Errors that can occur during subscription operations

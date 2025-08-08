@@ -21,6 +21,7 @@ static PRIVATE_NIP96_CONFIG: OnceCell<ServerConfig> = OnceCell::new();
 /// This struct represents a vector bot with configured metadata and client.
 /// It provides methods to send private messages and handle notifications.
 #[derive(Clone)]
+#[allow(dead_code)]
 pub struct VectorBot {
     /// The keys used to sign messages.
     keys: Keys,

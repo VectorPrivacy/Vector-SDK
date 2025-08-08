@@ -1,6 +1,6 @@
 use nostr_sdk::prelude::*;
 use url::Url;
-use thiserror::Error;
+// Removed unused import
 use std::fmt;
 
 /// Errors that can occur during metadata operations

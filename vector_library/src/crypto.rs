@@ -5,7 +5,7 @@ use thiserror::Error;
 use log::debug;
 use rand::Rng;
 use crate::rand;
-use std::fmt;
+// Removed unused import
 
 /// Represents encryption parameters for AES-256-GCM
 ///
