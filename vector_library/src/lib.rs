@@ -66,13 +66,13 @@ impl VectorBot {
     pub async fn quick(keys: Keys) -> Self {
         Self::new_with_urls(
             keys,
-            "username".to_string(),
-            "My Username".to_string(),
-            "Description".to_string(),
+            "vector bot".to_string(),
+            "Vector Bot".to_string(),
+            "vector bot created with quick".to_string(),
             "https://example.com/avatar.png",
             "https://example.com/banner.png",
-            "username@example.com".to_string(),
-            "pay@yukikishimoto.com".to_string(),
+            "example@example.com".to_string(),
+            "example@example.com".to_string(),
         ).await
     }
 
