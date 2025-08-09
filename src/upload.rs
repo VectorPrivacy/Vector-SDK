@@ -1,18 +1,18 @@
+use log::debug;
+use nostr_sdk::hashes::{sha256::Hash as Sha256Hash, Hash};
 use nostr_sdk::{
     nips::nip96::{ServerConfig, UploadResponse, UploadResponseStatus},
     nips::nip98::{HttpData, HttpMethod},
     NostrSigner, TagKind, TagStandard, Url,
 };
-use nostr_sdk::hashes::{sha256::Hash as Sha256Hash, Hash};
 use reqwest::{
     multipart::{self, Part},
-    Body, Client
+    Body, Client,
 };
 use std::net::SocketAddr;
-use tokio::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use thiserror::Error;
-use log::debug;
+use tokio::sync::mpsc;
 
 /// Configuration options for the upload client
 #[derive(Debug, Clone)]
@@ -74,7 +74,10 @@ pub enum UploadError {
 /// # Returns
 ///
 /// A Result containing the configured Client or an UploadError.
-pub fn make_client(proxy: Option<SocketAddr>, config: Option<UploadConfig>) -> Result<Client, UploadError> {
+pub fn make_client(
+    proxy: Option<SocketAddr>,
+    config: Option<UploadConfig>,
+) -> Result<Client, UploadError> {
     let config = config.unwrap_or_default();
     let client: Client = {
         let mut builder = Client::builder()
@@ -170,7 +173,8 @@ impl futures_util::Stream for ProgressTrackingStream {
 ///
 /// A boxed function that takes an optional percentage and bytes sent,
 /// and returns a Result.
-pub type ProgressCallback = Box<dyn Fn(Option<u8>, Option<u64>) -> Result<(), String> + Send + Sync>;
+pub type ProgressCallback =
+    Box<dyn Fn(Option<u8>, Option<u64>) -> Result<(), String> + Send + Sync>;
 
 /// Upload configuration with retry settings
 #[derive(Debug, Clone)]
@@ -247,7 +251,9 @@ where
             &progress_callback,
             &config,
             params.chunk_size,
-        ).await {
+        )
+        .await
+        {
             Ok(url) => return Ok(url),
             Err(e) => {
                 last_error = Some(e);
@@ -257,7 +263,8 @@ where
     }
 
     // All attempts failed, return the last error
-    Err(last_error.unwrap_or_else(|| UploadError::UploadError("No upload attempts were made".to_string())))
+    Err(last_error
+        .unwrap_or_else(|| UploadError::UploadError("No upload attempts were made".to_string())))
 }
 
 /// Internal function that performs a single upload attempt
@@ -277,28 +284,33 @@ where
     // Build NIP98 Authorization header
     let payload: Sha256Hash = Sha256Hash::hash(&file_data);
     let data = HttpData::new(desc.api_url.clone(), HttpMethod::POST).payload(payload);
-    let nip98_auth: String = data.to_authorization(signer).await.map_err(|e| UploadError::UploadError(e.to_string()))?;
+    let nip98_auth: String = data
+        .to_authorization(signer)
+        .await
+        .map_err(|e| UploadError::UploadError(e.to_string()))?;
 
     // Create shared counter for tracking upload progress
     let bytes_sent = Arc::new(Mutex::new(0u64));
     let total_size = file_data.len() as u64;
 
     // Report initial progress (0%)
-    progress_callback(Some(0), Some(0)).map_err(|e| UploadError::UploadError(e))?;
+    progress_callback(Some(0), Some(0)).map_err(UploadError::UploadError)?;
 
     // Make client
     let client: Client = make_client(proxy, Some(config.clone()))?;
 
     // Create form with tracking stream
     let file_part = {
-        let tracking_stream = ProgressTrackingStream::new(file_data.clone(), bytes_sent.clone(), chunk_size);
+        let tracking_stream =
+            ProgressTrackingStream::new(file_data.clone(), bytes_sent.clone(), chunk_size);
         let body = Body::wrap_stream(tracking_stream);
-        let mut part = Part::stream(body)
-            .file_name("filename");
+        let mut part = Part::stream(body).file_name("filename");
 
         // Set MIME type if provided
         if let Some(mime_str) = mime_type {
-            part = part.mime_str(mime_str).map_err(|_| UploadError::MultipartMimeError)?;
+            part = part
+                .mime_str(mime_str)
+                .map_err(|_| UploadError::MultipartMimeError)?;
         }
 
         part
@@ -361,7 +373,7 @@ where
     };
 
     // Report 100% completion
-    progress_callback(Some(100), Some(total_size)).map_err(|e| UploadError::UploadError(e))?;
+    progress_callback(Some(100), Some(total_size)).map_err(UploadError::UploadError)?;
 
     // Decode response
     let res: UploadResponse = response.json().await?;

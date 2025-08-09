@@ -1,17 +1,16 @@
-extern crate nostr_sdk;
-use nostr_sdk::prelude::*;
-use url::Url;
+use ::url::Url;
 use log::{debug, error};
+use nostr_sdk::prelude::*;
 
 pub mod client;
+pub mod crypto;
 pub mod metadata;
 pub mod subscription;
-pub mod crypto;
 pub mod upload;
 
-use once_cell::sync::OnceCell;
 use crate::client::build_client;
-use sha2::{Sha256, Digest};
+use once_cell::sync::OnceCell;
+use sha2::{Digest, Sha256};
 
 static TRUSTED_PRIVATE_NIP96: &str = "https://medea-1-swiss.vectorapp.io";
 static PRIVATE_NIP96_CONFIG: OnceCell<ServerConfig> = OnceCell::new();
@@ -74,7 +73,8 @@ impl VectorBot {
             "https://example.com/banner.png",
             "example@example.com".to_string(),
             "example@example.com".to_string(),
-        ).await
+        )
+        .await
     }
 
     /// Creates a new VectorBot with custom metadata.
@@ -115,7 +115,8 @@ impl VectorBot {
             banner,
             nip05,
             lud16,
-        ).await
+        )
+        .await
     }
 
     /// Creates a new VectorBot with the given metadata.
@@ -177,7 +178,8 @@ impl VectorBot {
             nip05.clone(),
             lud16.clone(),
             None,
-        ).await;
+        )
+        .await;
 
         Self {
             keys,
@@ -244,7 +246,12 @@ impl Channel {
     /// `true` if the message was sent successfully, `false` otherwise.
     pub async fn send_private_message(&self, message: &str) -> bool {
         debug!("Sending private message to: {:?}", self.recipient);
-        match self.base_bot.client.send_private_msg(self.recipient, message, []).await {
+        match self
+            .base_bot
+            .client
+            .send_private_msg(self.recipient, message, [])
+            .await
+        {
             Ok(_) => true,
             Err(e) => {
                 error!("Failed to send private message: {:?}", e);
@@ -312,7 +319,15 @@ impl Channel {
         let progress_callback = create_progress_callback();
 
         // Upload the file
-        let url = match upload_file(&self.base_bot.keys, &conf, &enc_file, &mime_type, progress_callback).await {
+        let url = match upload_file(
+            &self.base_bot.keys,
+            &conf,
+            &enc_file,
+            &mime_type,
+            progress_callback,
+        )
+        .await
+        {
             Ok(u) => u,
             Err(err) => {
                 error!("Failed to upload file: {}", err);
@@ -321,7 +336,18 @@ impl Channel {
         };
 
         // Create and send the attachment rumor
-        if let Err(err) = send_attachment_rumor(&self.base_bot, &self.recipient, &url, &attached_file, &params, &file_hash, file_size, &mime_type).await {
+        if let Err(err) = send_attachment_rumor(
+            &self.base_bot,
+            &self.recipient,
+            &url,
+            &attached_file,
+            &params,
+            &file_hash,
+            file_size,
+            &mime_type,
+        )
+        .await
+        {
             error!("Failed to send attachment rumor: {}", err);
             return false;
         }
@@ -385,8 +411,12 @@ fn create_progress_callback() -> crate::upload::ProgressCallback {
 /// A Result containing the server configuration.
 async fn get_server_config() -> Result<ServerConfig, String> {
     let url = Url::parse(TRUSTED_PRIVATE_NIP96).map_err(|_| "Invalid URL")?;
-    let conf = nostr_sdk::nips::nip96::get_server_config(url, None).await.map_err(|e| e.to_string())?;
-    PRIVATE_NIP96_CONFIG.set(conf.clone()).map_err(|_| "Failed to set server config")?;
+    let conf = nostr_sdk::nips::nip96::get_server_config(url, None)
+        .await
+        .map_err(|e| e.to_string())?;
+    PRIVATE_NIP96_CONFIG
+        .set(conf.clone())
+        .map_err(|_| "Failed to set server config")?;
     Ok(conf)
 }
 
@@ -425,7 +455,9 @@ async fn upload_file(
         progress_callback,
         Some(upload_params),
         Some(upload_config),
-    ).await.map_err(|e| e.to_string())
+    )
+    .await
+    .map_err(|e| e.to_string())
 }
 
 /// Sends an attachment rumor to the recipient.
@@ -458,31 +490,53 @@ async fn send_attachment_rumor(
     let mut attachment_rumor = EventBuilder::new(Kind::from_u16(15), url.to_string())
         .tag(Tag::public_key(*recipient))
         .tag(Tag::custom(TagKind::custom("file-type"), [mime_type]))
-        .tag(Tag::custom(TagKind::custom("size"), [file_size.to_string()]))
-        .tag(Tag::custom(TagKind::custom("encryption-algorithm"), ["aes-gcm"]))
-        .tag(Tag::custom(TagKind::custom("decryption-key"), [params.key.as_str()]))
-        .tag(Tag::custom(TagKind::custom("decryption-nonce"), [params.nonce.as_str()]))
+        .tag(Tag::custom(
+            TagKind::custom("size"),
+            [file_size.to_string()],
+        ))
+        .tag(Tag::custom(
+            TagKind::custom("encryption-algorithm"),
+            ["aes-gcm"],
+        ))
+        .tag(Tag::custom(
+            TagKind::custom("decryption-key"),
+            [params.key.as_str()],
+        ))
+        .tag(Tag::custom(
+            TagKind::custom("decryption-nonce"),
+            [params.nonce.as_str()],
+        ))
         .tag(Tag::custom(TagKind::custom("ox"), [file_hash]));
 
     // Append image metadata if available
     if let Some(ref img_meta) = file.img_meta {
         attachment_rumor = attachment_rumor
-            .tag(Tag::custom(TagKind::custom("blurhash"), [&img_meta.blurhash]))
-            .tag(Tag::custom(TagKind::custom("dim"), [format!("{}x{}", img_meta.width, img_meta.height)]));
+            .tag(Tag::custom(
+                TagKind::custom("blurhash"),
+                [&img_meta.blurhash],
+            ))
+            .tag(Tag::custom(
+                TagKind::custom("dim"),
+                [format!("{}x{}", img_meta.width, img_meta.height)],
+            ));
     }
 
     let built_rumor = attachment_rumor.build(bot.keys.public_key());
 
     debug!("Sending attachment rumor: {:?}", built_rumor);
 
-    match bot.client.gift_wrap(recipient, built_rumor.clone(), []).await {
+    match bot
+        .client
+        .gift_wrap(recipient, built_rumor.clone(), [])
+        .await
+    {
         Ok(output) => {
             if output.success.is_empty() && !output.failed.is_empty() {
                 error!("Failed to send attachment rumor: {:?}", output);
                 return Err("Failed to send attachment rumor".to_string());
             }
             Ok(())
-        },
+        }
         Err(e) => {
             error!("Error sending attachment rumor: {:?}", e);
             Err(format!("Error sending attachment rumor: {:?}", e))

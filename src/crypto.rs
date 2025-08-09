@@ -1,10 +1,9 @@
 use aes::Aes256;
-use aes_gcm::{AesGcm, AeadInPlace, KeyInit, Error as AesGcmError};
-use generic_array::{GenericArray, typenum::U16};
-use thiserror::Error;
+use aes_gcm::{AeadInPlace, AesGcm, Error as AesGcmError, KeyInit};
+use generic_array::{typenum::U16, GenericArray};
 use log::debug;
 use rand::Rng;
-use crate::rand;
+use thiserror::Error;
 // Removed unused import
 
 /// Represents encryption parameters for AES-256-GCM
@@ -87,13 +86,13 @@ pub fn encrypt_data(data: &[u8], params: &EncryptionParams) -> Result<Vec<u8>, C
     debug!("Encrypting data with key: {}", params.key);
 
     // Decode key and nonce from hex
-    let key_bytes = hex::decode(&params.key).map_err(|_| CryptoError::HexEncodingError("Invalid key".into()))?;
-    let nonce_bytes = hex::decode(&params.nonce).map_err(|_| CryptoError::HexEncodingError("Invalid nonce".into()))?;
+    let key_bytes = hex::decode(&params.key)
+        .map_err(|_| CryptoError::HexEncodingError("Invalid key".into()))?;
+    let nonce_bytes = hex::decode(&params.nonce)
+        .map_err(|_| CryptoError::HexEncodingError("Invalid nonce".into()))?;
 
     // Initialize AES-GCM cipher
-    let cipher = AesGcm::<Aes256, U16>::new(
-        GenericArray::from_slice(&key_bytes)
-    );
+    let cipher = AesGcm::<Aes256, U16>::new(GenericArray::from_slice(&key_bytes));
 
     // Prepare nonce
     let nonce = GenericArray::from_slice(&nonce_bytes);

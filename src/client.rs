@@ -1,6 +1,6 @@
+use log::warn;
 use nostr_sdk::prelude::*;
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
-use log::warn;
 
 /// Configuration options for the vector client.
 pub struct ClientConfig {
@@ -72,7 +72,7 @@ pub async fn build_client(
     // Add default relays
     for relay in &config.default_relays {
         if let Err(e) = client.add_relay(relay).await {
-            warn!("Failed to add relay {}: {:?}", relay, e);
+            warn!("Failed to add relay {relay}: {e:?}");
         }
     }
 
@@ -94,7 +94,8 @@ pub async fn build_client(
     let _ = client.set_metadata(&metadata).await;
 
     // Set up subscription for gift wrap events
-    let subscription = crate::subscription::create_gift_wrap_subscription(keys.public_key(), None, None).unwrap();
+    let subscription =
+        crate::subscription::create_gift_wrap_subscription(keys.public_key(), None, None).unwrap();
 
     let _ = client.subscribe(subscription, None).await;
 

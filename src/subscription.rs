@@ -12,7 +12,9 @@ pub enum SubscriptionError {
 impl fmt::Display for SubscriptionError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            SubscriptionError::InvalidFilter(msg) => write!(f, "Invalid filter configuration: {}", msg),
+            SubscriptionError::InvalidFilter(msg) => {
+                write!(f, "Invalid filter configuration: {msg}")
+            }
         }
     }
 }
@@ -66,7 +68,9 @@ pub fn create_gift_wrap_subscription(
     let limit = limit.unwrap_or(0);
 
     if limit > 1000 {
-        return Err(SubscriptionError::InvalidFilter("Limit exceeds maximum allowed value (1000)".into()));
+        return Err(SubscriptionError::InvalidFilter(
+            "Limit exceeds maximum allowed value (1000)".into(),
+        ));
     }
 
     Ok(Filter::new()

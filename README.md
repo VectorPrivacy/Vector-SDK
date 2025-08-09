@@ -96,7 +96,7 @@ To use the Vector Bot Library, add it as a dependency in your `Cargo.toml`:
 
 ```toml
 [dependencies]
-vector_library = { path = "path/to/vector_library" }
+vector_sdk = "0.1"
 ```
 
 ## Usage
@@ -104,7 +104,7 @@ vector_library = { path = "path/to/vector_library" }
 ### Sending a Text Message
 
 ```rust
-use vector_library::VectorBot;
+use vector_sdk::VectorBot;
 use nostr_sdk::prelude::*;
 
 #[tokio::main]
@@ -130,7 +130,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 ### Sending an Image
 
 ```rust
-use vector_library::{VectorBot, AttachmentFile};
+use vector_sdk::{VectorBot, AttachmentFile};
 use nostr_sdk::prelude::*;
 use std::fs;
 

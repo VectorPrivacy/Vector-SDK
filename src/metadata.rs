@@ -1,5 +1,5 @@
+use ::url::Url;
 use nostr_sdk::prelude::*;
-use url::Url;
 // Removed unused import
 use std::fmt;
 
@@ -15,8 +15,8 @@ pub enum MetadataError {
 impl fmt::Display for MetadataError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            MetadataError::InvalidFormat(msg) => write!(f, "Invalid metadata format: {}", msg),
-            MetadataError::MissingField(field) => write!(f, "Missing required field: {}", field),
+            MetadataError::InvalidFormat(msg) => write!(f, "Invalid metadata format: {msg}"),
+            MetadataError::MissingField(field) => write!(f, "Missing required field: {field}"),
         }
     }
 }
@@ -258,5 +258,6 @@ pub fn create_metadata(
         banner,
         nip05,
         lud16,
-    }.build()
+    }
+    .build()
 }

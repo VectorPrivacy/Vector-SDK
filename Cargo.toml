@@ -1,7 +1,13 @@
 [package]
-name = "vector_library"
+name = "vector_sdk"
 version = "0.1.0"
 edition = "2021"
+description = "Rust SDK for building Vector bots"
+license = "MIT"
+readme = "README.md"
+keywords = ["nostr", "sdk", "bot", "crypto", "async"]
+categories = ["network-programming", "asynchronous", "cryptography", "api-bindings"]
+rust-version = "1.75"
 
 [dependencies]
 nostr-sdk = { version = "0.42.0", features = ["nip04", "nip06", "nip44", "nip59", "nip96"] }
@@ -19,3 +25,4 @@ sha2 = "0.10.9"
 log = "0.4.22"
 thiserror = "1.0.61"
 rand = "0.8.5"
+url = "2"
