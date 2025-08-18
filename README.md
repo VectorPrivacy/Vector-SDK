@@ -165,6 +165,15 @@ async fn main() -> Result<(), Box<dyn Error>> {
 }
 ```
 
+### Typing indicators
+This is useful for when a bot needs to retreve information or is "thinking"
+
+```
+Work in progress
+```
+
+
+
 ## Components
 
 ### VectorBot
