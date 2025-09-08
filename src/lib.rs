@@ -443,13 +443,18 @@ fn create_progress_callback() -> crate::upload::ProgressCallback {
 /// A Result containing the server configuration.
 async fn get_server_config() -> Result<ServerConfig, String> {
     let url = Url::parse(TRUSTED_PRIVATE_NIP96).map_err(|_| "Invalid URL")?;
-    let conf = nostr_sdk::nips::nip96::get_server_config(url, None)
-        .await
-        .map_err(|e| e.to_string())?;
-    PRIVATE_NIP96_CONFIG
-        .set(conf.clone())
-        .map_err(|_| "Failed to set server config")?;
-    Ok(conf)
+    if PRIVATE_NIP96_CONFIG.get().is_some() {
+        let conf = PRIVATE_NIP96_CONFIG.get().unwrap().clone();
+        Ok(conf)
+    }else{
+        let conf = nostr_sdk::nips::nip96::get_server_config(url, None)
+            .await
+            .map_err(|e| e.to_string())?;
+            PRIVATE_NIP96_CONFIG
+                .set(conf.clone())
+                .map_err(|_| "Failed to set server config")?;
+        Ok(conf)
+    }
 }
 
 /// Uploads a file to the server with progress tracking.
