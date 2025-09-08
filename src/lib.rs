@@ -260,6 +260,38 @@ impl Channel {
         }
     }
 
+
+    // Sends a typing indicator
+    pub async fn send_typing_indicator(&self)-> bool {
+        debug!("Sending kind 30078 typing indicator to: {:?}", self.recipient);
+
+        // We need to send "typing" & an expiration
+        let content = String::from("typing");
+        // For expiration lets just set max for now
+        let expiration = Timestamp::from_secs(
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs()
+                + 30,
+        );
+
+        // Create and send the kind30078 with our typing tag
+        if let Err(err) = send_kind30078(
+            &self.base_bot,
+            &self.recipient,
+            content,
+            expiration,
+        )
+        .await
+        {
+            error!("Failed to send attachment rumor: {}", err);
+            return false;
+        }
+        true
+    }
+
+
     /// Sends a private file to the recipient.
     ///
     /// This function handles file encryption, uploads the file to a server,
@@ -459,6 +491,46 @@ async fn upload_file(
     .await
     .map_err(|e| e.to_string())
 }
+
+async fn send_kind30078(bot: &VectorBot, recipient: &PublicKey, content: String, expiration: Timestamp)-> Result<(), String> {
+
+    // Build and broadcast the Typing Indicator
+    let rumor = EventBuilder::new(Kind::ApplicationSpecificData, content)
+        .tag(Tag::public_key(*recipient))
+        .tag(Tag::custom(TagKind::d(), vec!["vector"]))
+        .tag(Tag::expiration(expiration));
+
+    // This expiration time is for NIP-40 relays so they can purge old Typing Indicators
+    let expiry_time = Timestamp::from_secs(
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs()
+            + 3600,
+    );
+
+    let built_rumor = rumor.build(bot.keys.public_key());
+
+    match bot
+        .client
+        .gift_wrap(recipient, built_rumor.clone(), [Tag::expiration(expiry_time)],)
+        .await
+    {
+        Ok(output) => {
+            if output.success.is_empty() && !output.failed.is_empty() {
+                error!("Failed to send attachment rumor: {:?}", output);
+                return Err("Failed to send attachment rumor".to_string());
+            }
+            Ok(())
+        }
+        Err(e) => {
+            error!("Error sending attachment rumor: {:?}", e);
+            Err(format!("Error sending attachment rumor: {:?}", e))
+        }
+    }
+
+}
+
 
 /// Sends an attachment rumor to the recipient.
 ///
