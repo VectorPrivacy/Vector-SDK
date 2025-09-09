@@ -1,6 +1,6 @@
 [package]
 name = "vector_sdk"
-version = "0.1.1"
+version = "0.2.0"
 edition = "2021"
 description = "Rust SDK for building Vector bots"
 license = "MIT"
@@ -26,3 +26,5 @@ log = "0.4.22"
 thiserror = "1.0.61"
 rand = "0.8.5"
 url = "2"
+mime_guess = "2"
+magical_rs = "0.4.5"

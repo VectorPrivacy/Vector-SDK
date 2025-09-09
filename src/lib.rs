@@ -24,6 +24,8 @@ pub mod upload;
 use crate::client::build_client;
 use once_cell::sync::OnceCell;
 use sha2::{Digest, Sha256};
+use magical_rs::magical::bytes_read::with_bytes_read;
+use magical_rs::magical::magic::FileKind;
 
 static TRUSTED_PRIVATE_NIP96: &str = "https://medea-1-swiss.vectorapp.io";
 static PRIVATE_NIP96_CONFIG: OnceCell<ServerConfig> = OnceCell::new();
@@ -428,29 +430,56 @@ impl Channel {
 /// # Returns
 ///
 /// The MIME type as a string.
-fn get_mime_type(extension: &str) -> &str {
-    match extension.to_lowercase().as_str() {
-        // Images
-        "png" => "image/png",
-        "jpg" | "jpeg" => "image/jpeg",
-        "gif" => "image/gif",
-        "webp" => "image/webp",
-        // Audio
-        "wav" => "audio/wav",
-        "mp3" => "audio/mp3",
-        "flac" => "audio/flac",
-        "ogg" => "audio/ogg",
-        "m4a" => "audio/mp4",
-        "aac" => "audio/aac",
-        // Videos
-        "mp4" => "video/mp4",
-        "webm" => "video/webm",
-        "mov" => "video/quicktime",
-        "avi" => "video/x-msvideo",
-        "mkv" => "video/x-matroska",
-        // Unknown
-        _ => "application/octet-stream",
+fn get_mime_type(extension: &str) -> String {
+    // Prefer mime_guess to derive a correct MIME from the extension.
+    // Fallback to application/octet-stream if unknown.
+    let mime = mime_guess::from_ext(extension).first_or_octet_stream();
+    mime.essence_str().to_string()
+}
+
+/**
+ Infer a likely file extension using magical_rs only.
+ Returns a common extension string (e.g. "png", "jpg") or None when unknown.
+*/
+fn infer_extension_from_bytes(bytes: &[u8]) -> Option<&'static str> {
+    // Use magical_rs recommended header length
+    let max = with_bytes_read();
+    let header = if bytes.len() > max { &bytes[..max] } else { bytes };
+    if let Some(kind) = FileKind::match_types(header) {
+        let name = format!("{:?}", kind).to_lowercase();
+
+        // Map common identifiers to standard extensions
+        if name.contains("png") { return Some("png"); }
+        if name.contains("jpeg") || name.contains("jpg") { return Some("jpg"); }
+        if name.contains("gif") { return Some("gif"); }
+        if name.contains("webp") { return Some("webp"); }
+        if name.contains("bmp") { return Some("bmp"); }
+        if name.contains("tiff") || name.contains("tif") { return Some("tiff"); }
+        if name.contains("heic") || name.contains("heif") { return Some("heic"); }
+
+        if name.contains("wav") || name.contains("wave") { return Some("wav"); }
+        if name.contains("ogg") { return Some("ogg"); }
+        if name.contains("flac") { return Some("flac"); }
+        if name.contains("mp3") { return Some("mp3"); }
+        if name.contains("m4a") { return Some("m4a"); }
+
+        if name.contains("quicktime") || name.contains("mov") { return Some("mov"); }
+        if name.contains("mp4") { return Some("mp4"); }
+        if name.contains("webm") { return Some("webm"); }
+        if name.contains("matroska") || name.contains("mkv") { return Some("mkv"); }
+        if name.contains("avi") { return Some("avi"); }
+
+        if name.contains("pdf") { return Some("pdf"); }
+        if name.contains("zip") { return Some("zip"); }
+        if name.contains("iso") { return Some("iso"); }
+        if name.contains("7z") { return Some("7z"); }
+        if name.contains("tar") { return Some("tar"); }
+        if name.contains("gzip") || name.contains("gz") { return Some("gz"); }
+        if name.contains("bz2") { return Some("bz2"); }
+        if name.contains("xz") { return Some("xz"); }
     }
+
+    None
 }
 
 /// Creates a progress callback for file uploads.
@@ -693,4 +722,53 @@ pub struct AttachmentFile {
     pub img_meta: Option<ImageMetadata>,
     /// The file extension
     pub extension: String,
+}
+
+/// Load a file from disk into an AttachmentFile, using mime_guess to infer a sensible extension
+/// when the path has none or is unknown.
+pub fn load_file<P: AsRef<std::path::Path>>(path: P) -> std::io::Result<AttachmentFile> {
+    let path_ref = path.as_ref();
+
+    // Read bytes from disk
+    let bytes = std::fs::read(path_ref)?;
+
+    // Prefer filesystem extension; if absent/invalid, derive from MIME guess
+    let extension = path_ref
+        .extension()
+        .and_then(|s| s.to_str())
+        .map(|s| s.to_string())
+        .or_else(|| {
+            let mime = mime_guess::from_path(path_ref).first_or_octet_stream();
+            mime_guess::get_mime_extensions(&mime)
+                .and_then(|arr| arr.first().map(|e| (*e).to_string()))
+        })
+        .unwrap_or_else(|| "bin".to_string());
+
+    Ok(AttachmentFile {
+        bytes,
+        img_meta: None,
+        extension,
+    })
+}
+
+impl AttachmentFile {
+    /// Create an AttachmentFile directly from a path on disk.
+    /// Equivalent to calling [`rust.load_file()`](src/lib.rs:682).
+    pub fn from_path<P: AsRef<std::path::Path>>(path: P) -> std::io::Result<Self> {
+        load_file(path)
+    }
+
+    /// Create an AttachmentFile from in-memory bytes.
+    /// Attempts to infer a sensible file extension via byte sniffing, falling back to "bin".
+    pub fn from_bytes<B: Into<Vec<u8>>>(bytes: B) -> Self {
+        let bytes_vec = bytes.into();
+        let ext = infer_extension_from_bytes(&bytes_vec)
+            .unwrap_or("bin")
+            .to_string();
+        Self {
+            bytes: bytes_vec,
+            img_meta: None,
+            extension: ext,
+        }
+    }
 }

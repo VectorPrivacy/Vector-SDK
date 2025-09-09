@@ -7,7 +7,7 @@ The Vector Bot Library is a Rust-based library for creating and managing vector 
 ## Features
 
 - Create vector bots with customizable metadata
-- Send and receive private messages
+- Send and receive private messages and files
 - Handle notifications for gift wrap events
 - Configure proxy settings for .onion relays
 - Add and manage relays
@@ -130,12 +130,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
 ### Sending an Image
 
 ```rust
-use vector_sdk::{VectorBot, AttachmentFile};
+use vector_sdk::{VectorBot, AttachmentFile, load_file};
 use nostr_sdk::prelude::*;
-use std::fs;
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn Error>> {
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Generate new random keys
     let keys = Keys::generate();
 
@@ -146,16 +145,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let chat_npub = PublicKey::from_bech32("npub1example...")?;
     let chat = bot.get_chat(chat_npub).await;
 
-    // Read image file
-    let image_path = "path/to/your/image.png";
-    let image_data = fs::read(image_path)?;
-
-    // Create an AttachmentFile
-    let attachment = AttachmentFile {
-        bytes: image_data,
-        img_meta: None, // Optional: Add image metadata if available
-        extension: "png".to_string(),
-    };
+    // Load a file from disk in one line
+    let attachment: AttachmentFile = load_file("path/to/your/image.png")?;
 
     // Send the image
     let success = chat.send_private_file(Some(attachment)).await;
@@ -163,6 +154,24 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     Ok(())
 }
+```
+
+Alternatively, you can use the inherent constructor:
+
+```rust
+let attachment = AttachmentFile::from_path("path/to/your/image.png")?;
+```
+
+### Creating an Attachment from in-memory bytes
+
+If you already loaded bytes in memory (e.g., `fs::read`), construct the attachment in a single line. The extension is inferred via magic-number sniffing and falls back to "bin" when unknown.
+
+```rust
+use vector_sdk::AttachmentFile;
+use std::fs;
+
+let bytes = fs::read("path/to/your/image.png")?;
+let attachment = AttachmentFile::from_bytes(bytes);
 ```
 
 ### Typing indicators
