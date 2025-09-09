@@ -1,6 +1,19 @@
 use ::url::Url;
 use log::{debug, error};
 use nostr_sdk::prelude::*;
+// Re-export the Nostr client type for downstream crates
+pub use nostr_sdk::prelude::Client as NostrClient;
+
+// Clean, namespaced re-exports of commonly used Nostr SDK items so downstreams
+// can depend only on vector_sdk.
+pub mod nostr {
+    pub use nostr_sdk::prelude::{
+        Client, Keys, PublicKey, SecretKey, Kind, Filter, Timestamp, Event, Metadata,
+        EventBuilder, Tag, TagKind, ToBech32, FromBech32,
+    };
+    pub use nostr_sdk::RelayPoolNotification;
+    pub use nostr_sdk::nips::nip59::UnwrappedGift;
+}
 
 pub mod client;
 pub mod crypto;
