@@ -246,10 +246,21 @@ impl Channel {
     /// `true` if the message was sent successfully, `false` otherwise.
     pub async fn send_private_message(&self, message: &str) -> bool {
         debug!("Sending private message to: {:?}", self.recipient);
+
+        // Add millisecond precision tag so clients can order messages sent within the same second
+        let final_time = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap();
+        let milliseconds = final_time.as_millis() % 1000;
+
         match self
             .base_bot
             .client
-            .send_private_msg(self.recipient, message, [])
+            .send_private_msg(
+                self.recipient,
+                message,
+                [Tag::custom(TagKind::custom("ms"), [milliseconds.to_string()])],
+            )
             .await
         {
             Ok(_) => true,
@@ -500,9 +511,16 @@ async fn upload_file(
 async fn send_kind30078(bot: &VectorBot, recipient: &PublicKey, content: String, expiration: Timestamp)-> Result<(), String> {
 
     // Build and broadcast the Typing Indicator
+    // Add millisecond precision tag so clients can order messages sent within the same second
+    let final_time = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap();
+    let milliseconds = final_time.as_millis() % 1000;
+
     let rumor = EventBuilder::new(Kind::ApplicationSpecificData, content)
         .tag(Tag::public_key(*recipient))
         .tag(Tag::custom(TagKind::d(), vec!["vector"]))
+        .tag(Tag::custom(TagKind::custom("ms"), [milliseconds.to_string()]))
         .tag(Tag::expiration(expiration));
 
     // This expiration time is for NIP-40 relays so they can purge old Typing Indicators
@@ -563,6 +581,12 @@ async fn send_attachment_rumor(
     file_size: usize,
     mime_type: &str,
 ) -> Result<(), String> {
+    // Add millisecond precision tag so clients can order messages sent within the same second
+    let final_time = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap();
+    let milliseconds = final_time.as_millis() % 1000;
+
     // Create the attachment rumor
     let mut attachment_rumor = EventBuilder::new(Kind::from_u16(15), url.to_string())
         .tag(Tag::public_key(*recipient))
@@ -583,7 +607,8 @@ async fn send_attachment_rumor(
             TagKind::custom("decryption-nonce"),
             [params.nonce.as_str()],
         ))
-        .tag(Tag::custom(TagKind::custom("ox"), [file_hash]));
+        .tag(Tag::custom(TagKind::custom("ox"), [file_hash]))
+        .tag(Tag::custom(TagKind::custom("ms"), [milliseconds.to_string()]));
 
     // Append image metadata if available
     if let Some(ref img_meta) = file.img_meta {
