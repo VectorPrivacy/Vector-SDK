@@ -98,14 +98,21 @@ impl VectorBot {
     /// A new VectorBot instance with the specified metadata.
     pub async fn new(
         keys: Keys,
-        name: String,
-        display_name: String,
-        about: String,
-        picture: &str,
-        banner: &str,
-        nip05: String,
-        lud16: String,
+        name: impl Into<String>,
+        display_name: impl Into<String>,
+        about: impl Into<String>,
+        picture: impl AsRef<str>,
+        banner: impl AsRef<str>,
+        nip05: impl Into<String>,
+        lud16: impl Into<String>,
     ) -> Self {
+        // Convert Into<String> to String so we can pass owned values to the helper.
+        let name = name.into();
+        let display_name = display_name.into();
+        let about = about.into();
+        let nip05 = nip05.into();
+        let lud16 = lud16.into();
+
         Self::new_with_urls(
             keys,
             name,
@@ -127,12 +134,12 @@ impl VectorBot {
         name: String,
         display_name: String,
         about: String,
-        picture: &str,
-        banner: &str,
+        picture: impl AsRef<str>,
+        banner: impl AsRef<str>,
         nip05: String,
         lud16: String,
     ) -> Self {
-        let picture_url = match Url::parse(picture) {
+        let picture_url = match Url::parse(picture.as_ref()) {
             Ok(url) => url,
             Err(e) => {
                 error!("Invalid picture URL: {}", e);
@@ -150,7 +157,7 @@ impl VectorBot {
             }
         };
 
-        let banner_url = match Url::parse(banner) {
+        let banner_url = match Url::parse(banner.as_ref()) {
             Ok(url) => url,
             Err(e) => {
                 error!("Invalid banner URL: {}", e);
