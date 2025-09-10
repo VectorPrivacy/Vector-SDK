@@ -294,6 +294,28 @@ impl Channel {
     }
 
 
+    pub async fn send_reaction(&self, reference_id: String, emoji: String) -> bool {
+        debug!("Sending a reaction event to: {:?}", self.recipient);
+
+        // We need the reference_event and the emoji, we can create the rest here
+
+        // Create and send the kind30078 with our typing tag
+        if let Err(err) = send_nip25(
+            &self.base_bot,
+            &self.recipient,
+            reference_id,
+            Kind::PrivateDirectMessage,
+            emoji,
+        )
+        .await
+        {
+            error!("Failed to send attachment rumor: {}", err);
+            return false;
+        }
+        true
+
+    }
+
     // Sends a typing indicator
     pub async fn send_typing_indicator(&self)-> bool {
         debug!("Sending kind 30078 typing indicator to: {:?}", self.recipient);
@@ -555,6 +577,39 @@ async fn upload_file(
     )
     .await
     .map_err(|e| e.to_string())
+}
+
+async fn send_nip25(bot: &VectorBot, recipient: &PublicKey, reference_id: String, message_type: Kind, emoji: String) -> Result<(), String> {
+
+    let reference_event = EventId::from_hex(reference_id.as_str()).unwrap();
+
+    let rumor = EventBuilder::reaction_extended(
+        reference_event,
+        *recipient,
+        Some(message_type),
+        &emoji,
+    );
+
+    let built_rumor = rumor.build(bot.keys.public_key());
+
+    match bot
+        .client
+        .gift_wrap(recipient, built_rumor.clone(), [],)
+        .await
+    {
+        Ok(output) => {
+            if output.success.is_empty() && !output.failed.is_empty() {
+                error!("Failed to send attachment rumor: {:?}", output);
+                return Err("Failed to send attachment rumor".to_string());
+            }
+            Ok(())
+        }
+        Err(e) => {
+            error!("Error sending attachment rumor: {:?}", e);
+            Err(format!("Error sending attachment rumor: {:?}", e))
+        }
+    }
+
 }
 
 async fn send_kind30078(bot: &VectorBot, recipient: &PublicKey, content: String, expiration: Timestamp)-> Result<(), String> {
