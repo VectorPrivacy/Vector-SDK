@@ -96,7 +96,7 @@ To use the Vector Bot Library, add it as a dependency in your `Cargo.toml`:
 
 ```toml
 [dependencies]
-vector_sdk = "0.1"
+vector_sdk = "=0.2.0"
 ```
 
 ## Usage
@@ -175,7 +175,7 @@ let attachment = AttachmentFile::from_bytes(bytes);
 ```
 
 ### Typing indicators
-This is useful for when a bot needs to retreve information or is "thinking"
+This is useful for when a bot needs to retrieve information or is "thinking"
 
 ```
 Work in progress
