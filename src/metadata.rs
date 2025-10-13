@@ -66,7 +66,8 @@ impl MetadataConfig {
         let mut metadata = Metadata::new()
             .name(&self.name)
             .display_name(&self.display_name)
-            .about(&self.about);
+            .about(&self.about)
+            .custom_field("bot", true);
 
         if let Some(ref picture) = self.picture {
             metadata = metadata.picture(picture.clone());
