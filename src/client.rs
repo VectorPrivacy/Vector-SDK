@@ -98,11 +98,16 @@ pub async fn build_client(
     let _ = client.set_metadata(&metadata).await;
 
     // Set up subscription for gift wrap events
-    let subscription =
-        crate::subscription::create_gift_wrap_subscription(keys.public_key(), None, None).unwrap();
+    let subscription = crate::subscription::create_gift_wrap_subscription(keys.public_key(), None, None).unwrap();
 
     let _ = client.subscribe(subscription, None).await;
 
+
+    let mls_sub = Filter::new()
+        .kind(Kind::MlsGroupMessage)
+        .limit(0);
+
+    let _ = client.subscribe(mls_sub, None).await;
 
     // MLS
     // Publishes the keypackage
