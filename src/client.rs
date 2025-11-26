@@ -2,6 +2,9 @@ use log::warn;
 use nostr_sdk::prelude::*;
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 
+use crate::mls::MlsGroup;
+use crate::mls::MlsError;
+
 /// Configuration options for the vector client.
 pub struct ClientConfig {
     /// The address of the proxy server for .onion relays.
@@ -46,6 +49,7 @@ impl Default for ClientConfig {
 /// A configured vector client.
 pub async fn build_client(
     keys: Keys,
+    device_mdk: MlsGroup,
     name: String,
     display_name: String,
     about: String,
@@ -98,6 +102,34 @@ pub async fn build_client(
         crate::subscription::create_gift_wrap_subscription(keys.public_key(), None, None).unwrap();
 
     let _ = client.subscribe(subscription, None).await;
+
+
+    // MLS
+    // Publishes the keypackage
+    let mls_relay = RelayUrl::parse("wss://jskitty.cat/nostr").expect("Relay pase failed");
+    if let Ok(engine) = device_mdk.engine() {
+        match engine.create_key_package_for_event(&keys.public_key(), [mls_relay.clone()]) {
+            Ok(key_package) => {
+                println!("Key Package: {:#?}", key_package);
+                let mls_keys_event = EventBuilder::new(Kind::MlsKeyPackage, key_package.0)
+                    .tags(key_package.1)
+                    .build(keys.public_key())
+                    .sign(&keys)
+                    .await;
+                    
+                match mls_keys_event{
+                    Ok(mls_event) =>{
+                        client.send_event_to([mls_relay], &mls_event).await.map_err(|e| MlsError::NetworkError(format!("publish mls keypackage: {}", e))).expect("Failure to publish keypackage");
+                    }
+                    Err(e) =>{ panic!("Error with creating event: {}", e)}
+                }
+            },
+            Err(e) => {
+                println!("Error creating package key event: {:#?}", {e})
+            }
+
+        }
+    }
 
     client
 }

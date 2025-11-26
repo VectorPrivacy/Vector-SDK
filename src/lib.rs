@@ -1,3 +1,5 @@
+use mdk_core::GroupId;
+use mdk_storage_traits::group_id;
 use ::url::Url;
 use log::{debug, error};
 use nostr_sdk::prelude::*;
@@ -13,7 +15,18 @@ pub mod nostr {
     };
     pub use nostr_sdk::RelayPoolNotification;
     pub use nostr_sdk::nips::nip59::UnwrappedGift;
+    pub use nostr_sdk::event::id;
 }
+
+
+// NEW
+use std::sync::Arc;
+
+pub mod mls;
+
+pub mod blossom;
+// NEW
+
 
 pub mod client;
 pub mod crypto;
@@ -22,13 +35,35 @@ pub mod subscription;
 pub mod upload;
 
 use crate::client::build_client;
+use crate::mls::MlsGroup;
+
+
 use once_cell::sync::OnceCell;
 use sha2::{Digest, Sha256};
 use magical_rs::magical::bytes_read::with_bytes_read;
 use magical_rs::magical::magic::FileKind;
 
-static TRUSTED_PRIVATE_NIP96: &str = "https://medea-1-swiss.vectorapp.io";
-static PRIVATE_NIP96_CONFIG: OnceCell<ServerConfig> = OnceCell::new();
+/// # Blossom Media Servers
+///
+/// A list of Blossom servers for file uploads with automatic failover.
+/// The system will try each server in order until one succeeds.
+static BLOSSOM_SERVERS: OnceCell<std::sync::Mutex<Vec<String>>> = OnceCell::new();
+
+/// Initialize default Blossom servers
+fn init_blossom_servers() -> Vec<String> {
+    vec![
+        "https://blossom.primal.net".to_string(),
+    ]
+}
+
+/// Get the list of Blossom servers (internal function)
+pub(crate) fn get_blossom_servers() -> Vec<String> {
+    BLOSSOM_SERVERS
+        .get_or_init(|| std::sync::Mutex::new(init_blossom_servers()))
+        .lock()
+        .unwrap()
+        .clone()
+}
 
 /// A vector bot that can send and receive private messages.
 ///
@@ -39,6 +74,8 @@ static PRIVATE_NIP96_CONFIG: OnceCell<ServerConfig> = OnceCell::new();
 pub struct VectorBot {
     /// The keys used to sign messages.
     keys: Keys,
+
+    device_mdk:mls::MlsGroup,
 
     /// The name of the user.
     name: String,
@@ -91,6 +128,7 @@ impl VectorBot {
         )
         .await
     }
+
 
     /// Creates a new VectorBot with custom metadata.
     ///
@@ -154,12 +192,22 @@ impl VectorBot {
         nip05: String,
         lud16: String,
     ) -> Self {
+
+        // MLS
+        // Create the mdk instance
+        let device_mdk = match MlsGroup::new_persistent().map_err(|e: mls::MlsError| format!("Failed to create MLS service: {}", e)){
+            Ok(device_mdk) => device_mdk,
+            Err(e) => panic!("error creating MlsGroup {}",e)
+        };
+
+
         let picture_url = match Url::parse(picture.as_ref()) {
             Ok(url) => url,
             Err(e) => {
                 error!("Invalid picture URL: {}", e);
                 return Self {
                     keys: keys.clone(),
+                    device_mdk,
                     name,
                     display_name,
                     about,
@@ -178,6 +226,7 @@ impl VectorBot {
                 error!("Invalid banner URL: {}", e);
                 return Self {
                     keys: keys.clone(),
+                    device_mdk,
                     name,
                     display_name,
                     about,
@@ -192,6 +241,7 @@ impl VectorBot {
 
         let client = build_client(
             keys.clone(),
+            device_mdk.clone(),
             name.clone(),
             display_name.clone(),
             about.clone(),
@@ -205,6 +255,7 @@ impl VectorBot {
 
         Self {
             keys,
+            device_mdk,
             name,
             display_name,
             about,
@@ -214,6 +265,82 @@ impl VectorBot {
             lud16,
             client,
         }
+    }
+
+
+    pub async fn join_group(&self, welcome_event: UnsignedEvent) -> Group{
+
+        let engine = match self.device_mdk.engine().map_err(|e| format!("Failed to get MLS engine: {}", e)){
+            Ok(engine) => engine,
+            Err(_) => panic!("Everything sucks, and we are all gonna die"),
+        };
+
+        let wrapper_event_id = match welcome_event.id {
+            Some(inner) => inner,
+            None => panic!("Event Id not set"),
+
+        };
+
+        let process_welcome_result = engine.process_welcome(&wrapper_event_id, &welcome_event);
+
+        println!("Process Welcome Result: {:#?}", process_welcome_result);
+
+        let welcomes = engine
+            .get_pending_welcomes()
+            .expect("Error getting pending welcomes");
+        let welcome = welcomes.first().unwrap();
+
+
+        println!("{:#?}", welcome);
+
+        match engine.accept_welcome(welcome){
+            Ok(r)=> println!("Accepted group invite successfully: {:#?}", r),
+            Err(e)=> println!("Failed group invite: {:#?}", e),
+        };
+
+
+        // let id = match welcome_event{
+        //     Some(inner) => inner,
+        //     None => panic!("No eventId given"),
+        // };
+        // let welcome_opt = match engine.get_welcome(&id).map_err(|e| e.to_string()){
+        //     Ok(welcome_opt) => welcome_opt,
+        //     Err(_) => panic!("Error finding the welcome in the engine"),
+        // };
+        // println!("{:#?}",welcome_opt);
+        // let welcome = match welcome_opt.ok_or_else(|| "Welcome not found".to_string()){
+        //     Ok(welcome) => welcome,
+        //     Err(_) => panic!("Error with the welcome opt"),
+        // };
+
+        // let _accept_results = match engine.accept_welcome(&welcome).map_err(|e| e.to_string()){
+        //     Ok(accept_results) => accept_results,
+        //     Err(_) => panic!("couldn't accept the results"),
+        // };
+
+        let the_group = self.get_group().await;
+
+        the_group
+
+    }
+
+    // Gets the group
+    // TODO: Filter for group based on ID
+    pub async fn get_group(&self) -> Group{
+        let bot_groups = match self.device_mdk.engine().expect("REASON").get_groups(){
+            Ok(group_information) =>{
+                println!("Our groups: {:#?}", group_information);
+                group_information
+            },
+            Err(_) => panic!("No groups to be found")
+        };
+
+        // println!("{:#?}", bot_groups);
+
+        let the_group = bot_groups.first().unwrap().clone();
+
+        // TODO: Filter for group based on ID
+        Group::new(the_group,self).await
     }
 
     /// Gets a chat channel for a specific public key.
@@ -233,12 +360,112 @@ impl VectorBot {
     }
 }
 
+pub struct Group {
+    group : mdk_core::prelude::group_types::Group,
+    base_bot: VectorBot,
+}
+impl Group {
+    // This will be all of the group functions and features
+    pub async fn new(mdk_group: mdk_core::prelude::group_types::Group, bot: &VectorBot) -> Self {
+        Self {
+            group: mdk_group,
+            base_bot: bot.clone(),
+        }
+    }
+
+    // pub async fn accept_group_invite(&self, welcome_event: std::option::Option<nostr_sdk::EventId>)-> Result<(), String>{
+
+    //     let engine = self.base_bot.device_mdk.engine().map_err(|e| format!("Failed to get MLS engine: {}", e))?;
+
+    //     let id = match welcome_event{
+    //         Some(inner) => inner,
+    //         None => return Err(format!("No event id given")),
+    //     };
+    //     let welcome_opt = engine.get_welcome(&id).map_err(|e| e.to_string())?;
+    //     let welcome = welcome_opt.ok_or_else(|| "Welcome not found".to_string())?;
+
+    //     engine.accept_welcome(&welcome).map_err(|e| e.to_string())?;
+        
+    //     Ok(())
+    // }
+
+    pub async fn check_group_messages(&self,) -> Result<(), String> {
+        let engine = self.base_bot.device_mdk.engine().map_err(|e| format!("Failed to get MLS engine: {}", e))?;
+
+
+        let messages = engine.get_messages(&self.group.mls_group_id).map_err(|e| e.to_string())?;
+        for message in messages{
+            println!("Found messages: {:#?}", message);
+        }
+        Ok(())
+    }
+
+    // Send message
+    pub async fn send_group_message(&self, message: &str,) -> Result<(), String> {
+
+        println!("Sending a message to the group: {:#?}, message: {}",&self.group.mls_group_id, message);
+        
+
+        // let test =&self.group.nostr_group_id;
+
+        //let rumor = EventBuilder::new(Kind::Custom(9), "Hello World").build( self.base_bot.keys.public_key());
+
+        // Vector seems to build the rumors differently
+        // Build a minimal inner rumor carrying the plaintext payload.
+        let rumor_builder = EventBuilder::new(Kind::PrivateDirectMessage, message);
+        // .tag(Tag::custom(
+        //     TagKind::Custom(std::borrow::Cow::Borrowed("vector-mls-msg")),
+        //     // Attach the wire id (UI/relay id) for easier diagnostics
+        //     vec![test],
+        // ));
+        
+        // // Add reply tag if replying to a message
+        // if let Some(ref reply_id) = replied_to {
+        //     if !reply_id.is_empty() {
+        //         rumor_builder = rumor_builder.tag(Tag::custom(
+        //             TagKind::e(),
+        //             vec![reply_id, "", "reply"],
+        //         ));
+        //     }
+        // }
+
+        let rumor = rumor_builder.build(self.base_bot.keys.public_key());
+
+
+        let _mls_wrapper_result = {
+
+            let engine = self.base_bot.device_mdk.engine().map_err(|e| format!("Failed to get MLS engine: {}", e))?;
+                
+            let group_message_creation = match engine.create_message(&self.group.mls_group_id, rumor.clone()){
+                Ok(r)=> {
+                    println!("Successfully created the message: {:#?}", r);
+                    r
+                },
+                Err(_)=> {
+                    return Err("Error creating the group message event".to_string());
+                }
+            };
+
+            println!("Group message creation: {:#?}", group_message_creation);
+
+            let send_group_message_event = match self.base_bot.client.send_event(&group_message_creation).await{
+                Ok(r)=> println!("Event Sent to the network: {:#?}", r),
+                Err(e)=> println!("Error sending event: {:#?}",e),
+            };
+
+            println!("{:#?}", send_group_message_event);
+
+            group_message_creation
+        };
+
+        Ok(())
+    }
+}
 /// Represents a communication channel with a specific recipient.
 pub struct Channel {
     recipient: PublicKey,
     base_bot: VectorBot,
 }
-
 impl Channel {
     /// Creates a new Channel for communicating with a specific recipient.
     ///
@@ -360,6 +587,7 @@ impl Channel {
     ///
     /// `true` if the file was sent successfully, `false` otherwise.
     pub async fn send_private_file(&self, file: Option<AttachmentFile>) -> bool {
+        let servers = crate::get_blossom_servers();
         let attached_file = match file {
             Some(f) => f,
             None => {
@@ -393,53 +621,61 @@ impl Channel {
         };
         let file_size = enc_file.len();
 
-        // Get server config
-        let conf = match get_server_config().await {
-            Ok(c) => c,
-            Err(err) => {
-                error!("Failed to get server config: {}", err);
-                return false;
-            }
-        };
-
+        // // Get server config
+        // let conf = match get_server_config().await {
+        //     Ok(c) => c,
+        //     Err(err) => {
+        //         error!("Failed to get server config: {}", err);
+        //         return false;
+        //     }
+        // };
         // Create a progress callback for file uploads
-        let progress_callback = create_progress_callback();
+        let progress_callback: crate::blossom::ProgressCallback = std::sync::Arc::new(move |percentage, _bytes| {
+                if let Some(pct) = percentage {
+                    println!("Upload progress: {}%",pct);
+                }
+            Ok(())
+        });
 
-        // Upload the file
-        let url = match upload_file(
-            &self.base_bot.keys,
-            &conf,
-            &enc_file,
-            &mime_type,
-            progress_callback,
-        )
-        .await
-        {
-            Ok(u) => u,
-            Err(err) => {
-                error!("Failed to upload file: {}", err);
+
+        match crate::blossom::upload_blob_with_progress_and_failover(self.base_bot.keys.clone(),servers,enc_file,Some(mime_type.as_str()),progress_callback, Some(3), Some(std::time::Duration::from_secs(2))).await {
+            Ok(url) => {
+                match Url::parse(&url){
+                    Ok(url_parsed) =>{
+                        match send_attachment_rumor(
+                        &self.base_bot,
+                        &self.recipient,
+                        &url_parsed,
+                        &attached_file,
+                        &params,
+                        &file_hash,
+                        file_size,
+                        &mime_type,
+                        ).await
+                        {
+                            Ok(_) =>{
+                                println!("Upload successful");
+                                true
+                            }
+                            Err(e0) =>{
+                                error!("Failed to send attachment rumor: {}", e0);
+                                return false;
+                        }
+                    }
+                    }
+                    Err(e1) => {
+                        panic!("Failed to send attachment rumor: {}", e1);
+                    }
+                }
+            },
+            Err(e) => {
+                // The file upload failed: so we mark the message as failed and notify of an error
+                // Return the error
+                eprintln!("[Blossom Error] Upload failed: {}", e);
                 return false;
             }
-        };
-
-        // Create and send the attachment rumor
-        if let Err(err) = send_attachment_rumor(
-            &self.base_bot,
-            &self.recipient,
-            &url,
-            &attached_file,
-            &params,
-            &file_hash,
-            file_size,
-            &mime_type,
-        )
-        .await
-        {
-            error!("Failed to send attachment rumor: {}", err);
-            return false;
         }
 
-        true
     }
 }
 
@@ -509,35 +745,34 @@ fn infer_extension_from_bytes(bytes: &[u8]) -> Option<&'static str> {
 /// # Returns
 ///
 /// A boxed progress callback function.
-fn create_progress_callback() -> crate::upload::ProgressCallback {
-    Box::new(move |percentage, _| {
-        if let Some(pct) = percentage {
-            println!("Upload progress: {}%", pct);
-        }
-        Ok(())
-    })
-}
+// fn create_progress_callback() -> crate::upload::ProgressCallback {
+//     Box::new(move |percentage, _| {
+//         if let Some(pct) = percentage {
+//             println!("Upload progress: {}%", pct);
+//         }
+//         Ok(())
+//     })
+// }
 
 /// Gets the server configuration for file uploads.
 ///
 /// # Returns
 ///
 /// A Result containing the server configuration.
-async fn get_server_config() -> Result<ServerConfig, String> {
-    let url = Url::parse(TRUSTED_PRIVATE_NIP96).map_err(|_| "Invalid URL")?;
-    if PRIVATE_NIP96_CONFIG.get().is_some() {
-        let conf = PRIVATE_NIP96_CONFIG.get().unwrap().clone();
-        Ok(conf)
-    }else{
-        let conf = nostr_sdk::nips::nip96::get_server_config(url, None)
-            .await
-            .map_err(|e| e.to_string())?;
-            PRIVATE_NIP96_CONFIG
-                .set(conf.clone())
-                .map_err(|_| "Failed to set server config")?;
-        Ok(conf)
-    }
-}
+// async fn get_server_config() -> Result<ServerConfig, String> {
+//     let url = Url::parse(TRUSTED_PRIVATE_NIP96).map_err(|_| "Invalid URL")?;
+//     if PRIVATE_NIP96_CONFIG.get().is_some() {
+//         let conf: ServerConfig = PRIVATE_NIP96_CONFIG.get().unwrap().clone();
+//         Ok(conf)
+//     }else{
+//         nostr_sdk::nips::nip96::get_server_config_url(server_url)
+//         let conf = nostr_sdk::nips::nip96::get_server_config(&url).map_err(|e| e.to_string())?;
+//             PRIVATE_NIP96_CONFIG
+//                 .set(conf)
+//                 .map_err(|_| "Failed to set server config")?;
+//         Ok(conf)
+//     }
+// }
 
 /// Uploads a file to the server with progress tracking.
 ///
