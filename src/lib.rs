@@ -389,6 +389,22 @@ impl Group {
     //     Ok(())
     // }
 
+    pub async fn get_message(&self, message_id: &EventId) -> Result<(), String> {
+        let engine = self.base_bot.device_mdk.engine().map_err(|e| format!("Failed to get MLS engine: {}", e))?;
+        
+        let _engine_message = match engine.get_message(message_id){
+            Ok(r)=> {
+                println!("message found: {:#?}", r);
+                r
+            },
+            Err(_)=> {
+                return Err("Error finding the message".to_string());
+            }
+        };
+
+        Ok(())
+    }
+
     pub async fn check_group_messages(&self,) -> Result<(), String> {
         let engine = self.base_bot.device_mdk.engine().map_err(|e| format!("Failed to get MLS engine: {}", e))?;
 
