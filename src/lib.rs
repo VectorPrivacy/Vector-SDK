@@ -268,11 +268,53 @@ impl VectorBot {
     }
 
 
+    pub async fn process_group_message(&self, event:&Event) -> mdk_core::prelude::message_types::Message{
+        println!("PROCESSING GROUP MESSAGE");
+        let engine = match self.device_mdk.engine().map_err(|e| format!("Failed to get MLS engine: {}", e)){
+            Ok(engine) => engine,
+            Err(_) => panic!("Engine failure"),
+        };
+
+        let _processing_event = match engine.process_message(event) {
+            Ok(ev) => {
+                match ev { 
+                    mdk_core::prelude::MessageProcessingResult::ApplicationMessage(ev) => {
+                        return ev
+                    },
+                    // mdk_core::prelude::MessageProcessingResult::Commit { mls_group_id } => {
+                    //     "No worky Commit".to_string()
+                    // },
+                    // mdk_core::prelude::MessageProcessingResult::Proposal(_proposal) => {
+                    //     "No worky Proposal".to_string()
+                    // },
+                    // mdk_core::prelude::MessageProcessingResult::Unprocessable { mls_group_id: _ } => {
+                    //     "No worky Unprocessable".to_string()
+                    // },
+                    _ => panic!("Something went wrong")
+                };
+            }
+            Err(_) => panic!("Failed to process message"),
+        };
+
+
+        // println!("Processing Event SDK: {:#?}", processing_event);
+
+        // let message: mdk_core::prelude::message_types::Message = match engine.get_message(&event.id){
+        //     Ok(Some(m))=>m,
+        //     Ok(None) => panic!("No message found"),
+        //     Err(_)=> panic!("Could not find message")
+        // };
+
+        // message
+
+    }
+
+
     pub async fn join_group(&self, welcome_event: UnsignedEvent) -> Group{
 
         let engine = match self.device_mdk.engine().map_err(|e| format!("Failed to get MLS engine: {}", e)){
             Ok(engine) => engine,
-            Err(_) => panic!("Everything sucks, and we are all gonna die"),
+            Err(_) => panic!("Engine failure"),
         };
 
         let wrapper_event_id = match welcome_event.id {
@@ -318,7 +360,7 @@ impl VectorBot {
         //     Err(_) => panic!("couldn't accept the results"),
         // };
 
-        let the_group = self.get_group().await;
+        let the_group = self.get_group(welcome.mls_group_id.clone()).await;
 
         the_group
 
@@ -326,21 +368,37 @@ impl VectorBot {
 
     // Gets the group
     // TODO: Filter for group based on ID
-    pub async fn get_group(&self) -> Group{
-        let bot_groups = match self.device_mdk.engine().expect("REASON").get_groups(){
-            Ok(group_information) =>{
-                println!("Our groups: {:#?}", group_information);
-                group_information
+    pub async fn get_group(&self, group_id: GroupId) -> Group{
+
+        let bot_groups = match self.device_mdk.engine().expect("REASON").get_group(&group_id){
+            Ok(Some(group_information)) =>{
+                println!("Group info: {:#?}", group_information);
+                Group::new(group_information,self).await
             },
-            Err(_) => panic!("No groups to be found")
+            Ok(None)=>{
+                panic!("No group with that id")
+            }
+            Err(_) => panic!("Error accessing storage")
         };
+        bot_groups
 
-        // println!("{:#?}", bot_groups);
 
-        let the_group = bot_groups.first().unwrap().clone();
+        // let bot_groups = match self.device_mdk.engine().expect("REASON").get_groups(){
+        //     Ok(group_information) =>{
+        //         println!("Our groups: {:#?}", group_information);
+        //         group_information
+        //     },
+        //     Err(_) => panic!("No groups to be found")
+        // };
 
-        // TODO: Filter for group based on ID
-        Group::new(the_group,self).await
+        // self.device_mdk.engine().
+
+        // // println!("{:#?}", bot_groups);
+
+        // let the_group = bot_groups.first().unwrap().clone();
+
+        // // TODO: Filter for group based on ID
+        // Group::new(the_group,self).await
     }
 
     /// Gets a chat channel for a specific public key.
@@ -421,14 +479,12 @@ impl Group {
 
         println!("Sending a message to the group: {:#?}, message: {}",&self.group.mls_group_id, message);
         
-
-        // let test =&self.group.nostr_group_id;
-
-        //let rumor = EventBuilder::new(Kind::Custom(9), "Hello World").build( self.base_bot.keys.public_key());
-
-        // Vector seems to build the rumors differently
+        // Vector build the rumors a little differently then the stock mdk 
         // Build a minimal inner rumor carrying the plaintext payload.
         let rumor_builder = EventBuilder::new(Kind::PrivateDirectMessage, message);
+
+
+        // TODO: The following is from the Vector main and should be added once we are done prototyping:
         // .tag(Tag::custom(
         //     TagKind::Custom(std::borrow::Cow::Borrowed("vector-mls-msg")),
         //     // Attach the wire id (UI/relay id) for easier diagnostics
