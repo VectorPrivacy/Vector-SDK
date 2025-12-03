@@ -282,30 +282,16 @@ impl VectorBot {
                         return ev
                     },
                     // mdk_core::prelude::MessageProcessingResult::Commit { mls_group_id } => {
-                    //     "No worky Commit".to_string()
                     // },
                     // mdk_core::prelude::MessageProcessingResult::Proposal(_proposal) => {
-                    //     "No worky Proposal".to_string()
                     // },
                     // mdk_core::prelude::MessageProcessingResult::Unprocessable { mls_group_id: _ } => {
-                    //     "No worky Unprocessable".to_string()
                     // },
                     _ => panic!("Something went wrong")
                 };
             }
             Err(_) => panic!("Failed to process message"),
         };
-
-
-        // println!("Processing Event SDK: {:#?}", processing_event);
-
-        // let message: mdk_core::prelude::message_types::Message = match engine.get_message(&event.id){
-        //     Ok(Some(m))=>m,
-        //     Ok(None) => panic!("No message found"),
-        //     Err(_)=> panic!("Could not find message")
-        // };
-
-        // message
 
     }
 
@@ -340,26 +326,6 @@ impl VectorBot {
             Err(e)=> println!("Failed group invite: {:#?}", e),
         };
 
-
-        // let id = match welcome_event{
-        //     Some(inner) => inner,
-        //     None => panic!("No eventId given"),
-        // };
-        // let welcome_opt = match engine.get_welcome(&id).map_err(|e| e.to_string()){
-        //     Ok(welcome_opt) => welcome_opt,
-        //     Err(_) => panic!("Error finding the welcome in the engine"),
-        // };
-        // println!("{:#?}",welcome_opt);
-        // let welcome = match welcome_opt.ok_or_else(|| "Welcome not found".to_string()){
-        //     Ok(welcome) => welcome,
-        //     Err(_) => panic!("Error with the welcome opt"),
-        // };
-
-        // let _accept_results = match engine.accept_welcome(&welcome).map_err(|e| e.to_string()){
-        //     Ok(accept_results) => accept_results,
-        //     Err(_) => panic!("couldn't accept the results"),
-        // };
-
         let the_group = self.get_group(welcome.mls_group_id.clone()).await;
 
         the_group
@@ -382,23 +348,6 @@ impl VectorBot {
         };
         bot_groups
 
-
-        // let bot_groups = match self.device_mdk.engine().expect("REASON").get_groups(){
-        //     Ok(group_information) =>{
-        //         println!("Our groups: {:#?}", group_information);
-        //         group_information
-        //     },
-        //     Err(_) => panic!("No groups to be found")
-        // };
-
-        // self.device_mdk.engine().
-
-        // // println!("{:#?}", bot_groups);
-
-        // let the_group = bot_groups.first().unwrap().clone();
-
-        // // TODO: Filter for group based on ID
-        // Group::new(the_group,self).await
     }
 
     /// Gets a chat channel for a specific public key.
@@ -430,22 +379,6 @@ impl Group {
             base_bot: bot.clone(),
         }
     }
-
-    // pub async fn accept_group_invite(&self, welcome_event: std::option::Option<nostr_sdk::EventId>)-> Result<(), String>{
-
-    //     let engine = self.base_bot.device_mdk.engine().map_err(|e| format!("Failed to get MLS engine: {}", e))?;
-
-    //     let id = match welcome_event{
-    //         Some(inner) => inner,
-    //         None => return Err(format!("No event id given")),
-    //     };
-    //     let welcome_opt = engine.get_welcome(&id).map_err(|e| e.to_string())?;
-    //     let welcome = welcome_opt.ok_or_else(|| "Welcome not found".to_string())?;
-
-    //     engine.accept_welcome(&welcome).map_err(|e| e.to_string())?;
-        
-    //     Ok(())
-    // }
 
     pub async fn get_message(&self, message_id: &EventId) -> Result<(), String> {
         let engine = self.base_bot.device_mdk.engine().map_err(|e| format!("Failed to get MLS engine: {}", e))?;
