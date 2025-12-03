@@ -1,4 +1,5 @@
 use mdk_core::GroupId;
+use mdk_core::prelude::welcome_types::Welcome;
 use mdk_storage_traits::group_id;
 use ::url::Url;
 use log::{debug, error};
@@ -267,7 +268,48 @@ impl VectorBot {
         }
     }
 
+    // Take our welcome and checkout the information from the group so that we can make a decision if its a group we want to join or not
 
+    pub async fn checkout_group(&self, welcome_event: UnsignedEvent) -> mdk_storage_traits::groups::types::Group{
+
+        let engine = match self.device_mdk.engine().map_err(|e| format!("Failed to get MLS engine: {}", e)){
+            Ok(engine) => engine,
+            Err(_) => panic!("Engine failure"),
+        };
+
+        let wrapper_event_id = match welcome_event.id {
+            Some(inner) => inner,
+            None => panic!("Event Id not set"),
+
+        };
+
+        let process_welcome_result = engine.process_welcome(&wrapper_event_id, &welcome_event);
+
+        println!("Process Welcome Result: {:#?}", process_welcome_result);
+
+        match process_welcome_result {
+            Ok(welcome) =>{
+                let bot_groups = match engine.get_group(&welcome.mls_group_id){
+                    Ok(Some(group_information)) =>{
+                        println!("Group info: {:#?}", group_information);
+                        group_information
+                    },
+                    Ok(None)=>{
+                        panic!("No group with that id")
+                    }
+                    Err(_) => panic!("Error accessing storage")
+                };
+                bot_groups
+            },
+            Err(_) => {
+                panic!("Welcome didn't process correctly and couldn't be handled")
+            }
+        }
+
+
+    }
+
+    // This needs to be a part of the bot because we don't know the group without processing it first
     pub async fn process_group_message(&self, event:&Event) -> mdk_core::prelude::message_types::Message{
         println!("PROCESSING GROUP MESSAGE");
         let engine = match self.device_mdk.engine().map_err(|e| format!("Failed to get MLS engine: {}", e)){
@@ -296,7 +338,42 @@ impl VectorBot {
     }
 
 
-    pub async fn join_group(&self, welcome_event: UnsignedEvent) -> Group{
+    pub async fn join_group(&self, group_id: GroupId) -> Group{
+        let engine = match self.device_mdk.engine().map_err(|e| format!("Failed to get MLS engine: {}", e)){
+            Ok(engine) => engine,
+            Err(_) => panic!("Engine failure"),
+        };
+
+        // Find group based on group id in our pending welcomes
+        let welcome =  match engine.get_pending_welcomes(){
+            Ok(w)=>{
+                // Ok(welcomes) => welcomes.into_iter().find(|w| w.mls_group_id == group_id)
+                let found_welcome = w.into_iter().find(|wi| wi.mls_group_id == group_id);
+                found_welcome.unwrap()
+            },
+            Err(_) => panic!("Fuck it's all broken")
+        };
+
+
+
+        println!("{:#?}", welcome);
+
+        match engine.accept_welcome(&welcome){
+            Ok(r)=> println!("Accepted group invite successfully: {:#?}", r),
+            Err(e)=> println!("Failed group invite: {:#?}", e),
+        };
+
+
+        // Respond with the group
+
+        let the_group = self.get_group(welcome.mls_group_id.clone()).await;
+
+        the_group
+
+
+    }
+
+    pub async fn quick_join_group(&self, welcome_event: UnsignedEvent) -> Group{
 
         let engine = match self.device_mdk.engine().map_err(|e| format!("Failed to get MLS engine: {}", e)){
             Ok(engine) => engine,
