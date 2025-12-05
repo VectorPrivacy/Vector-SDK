@@ -351,7 +351,7 @@ impl VectorBot {
                 let found_welcome = w.into_iter().find(|wi| wi.mls_group_id == group_id);
                 found_welcome.unwrap()
             },
-            Err(_) => panic!("Fuck it's all broken")
+            Err(_) => panic!("No welcomes available")
         };
 
 
