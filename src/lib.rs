@@ -559,6 +559,171 @@ impl Group {
 
         Ok(())
     }
+
+    pub async fn send_group_attachment(&self, file: Option<AttachmentFile>) -> Result<(), String> {
+    
+        let servers = crate::get_blossom_servers();
+        let attached_file = match file {
+            Some(f) => f,
+            None => {
+                error!("No file provided for sending");
+                panic!("Error accessing storage")
+            }
+        };
+
+        // Calculate the file hash first (before encryption)
+        let file_hash = calculate_file_hash(&attached_file.bytes);
+
+        // Format a Mime Type from the file extension
+        let mime_type = get_mime_type(&attached_file.extension);
+
+        // Generate encryption parameters and encrypt the file
+        let params_result = crypto::generate_encryption_params();
+        let params = match params_result {
+            Ok(p) => p,
+            Err(err) => {
+                error!("Failed to generate encryption parameters: {}", err);
+                panic!("Failed to generate encryption parameters: {}", err);
+            }
+        };
+
+        let enc_file = match crypto::encrypt_data(attached_file.bytes.as_slice(), &params) {
+            Ok(data) => data,
+            Err(err) => {
+                error!("Failed to encrypt file: {}", err);
+                panic!("Failed to encrypt file: {}", err);
+            }
+        };
+        let file_size = enc_file.len();
+
+        // Create a progress callback for file uploads
+        let progress_callback: crate::blossom::ProgressCallback = std::sync::Arc::new(move |percentage, _bytes| {
+                if let Some(pct) = percentage {
+                    println!("Upload progress: {}%",pct);
+                }
+            Ok(())
+        });
+
+        match crate::blossom::upload_blob_with_progress_and_failover(self.base_bot.keys.clone(),servers,enc_file,Some(mime_type.as_str()),progress_callback, Some(3), Some(std::time::Duration::from_secs(2))).await {
+            Ok(url) => {
+                match Url::parse(&url){
+                    Ok(url) =>{
+
+                        // We will just build a custom rumor for now to test
+                        let final_time = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap();
+                        let milliseconds = final_time.as_millis() % 1000;
+
+                        // Create the attachment rumor
+                        let mut attachment_rumor = EventBuilder::new(Kind::from_u16(15), url.to_string())
+                            //.tag(Tag::public_key(*recipient))
+                            .tag(Tag::custom(TagKind::custom("file-type"), [mime_type]))
+                            .tag(Tag::custom(
+                                TagKind::custom("size"),
+                                [file_size.to_string()],
+                            ))
+                            .tag(Tag::custom(
+                                TagKind::custom("encryption-algorithm"),
+                                ["aes-gcm"],
+                            ))
+                            .tag(Tag::custom(
+                                TagKind::custom("decryption-key"),
+                                [params.key.as_str()],
+                            ))
+                            .tag(Tag::custom(
+                                TagKind::custom("decryption-nonce"),
+                                [params.nonce.as_str()],
+                            ))
+                            .tag(Tag::custom(TagKind::custom("ox"), [file_hash]))
+                            .tag(Tag::custom(TagKind::custom("ms"), [milliseconds.to_string()]));
+
+                        // Append image metadata if available
+                        if let Some(ref img_meta) = attached_file.img_meta {
+                            attachment_rumor = attachment_rumor
+                                .tag(Tag::custom(
+                                    TagKind::custom("blurhash"),
+                                    [&img_meta.blurhash],
+                                ))
+                                .tag(Tag::custom(
+                                    TagKind::custom("dim"),
+                                    [format!("{}x{}", img_meta.width, img_meta.height)],
+                                ));
+                        }
+
+                        let built_rumor = attachment_rumor.build(self.base_bot.keys.public_key());
+
+                        debug!("Sending attachment rumor: {:?}", built_rumor);
+
+
+
+                        let _mls_wrapper_result = {
+
+                            let engine = self.base_bot.device_mdk.engine().map_err(|e| format!("Failed to get MLS engine: {}", e))?;
+
+                            let group_message_creation = match engine.create_message(&self.group.mls_group_id, built_rumor.clone()){
+                                Ok(r)=> {
+                                    println!("Successfully created the message: {:#?}", r);
+                                    r
+                                },
+                                Err(_)=> {
+                                    return Err("Error creating the group message event".to_string());
+                                }
+                            };
+
+                            println!("Group message creation: {:#?}", group_message_creation);
+
+                            let send_group_message_event = match self.base_bot.client.send_event(&group_message_creation).await{
+                                Ok(r)=> println!("Event Sent to the network: {:#?}", r),
+                                Err(e)=> println!("Error sending event: {:#?}",e),
+                            };
+
+                            println!("{:#?}", send_group_message_event);
+
+                            group_message_creation
+                        };
+
+
+
+
+                        // match send_attachment_rumor(
+                        // &self.base_bot,
+                        // &self.recipient,
+                        // &url_parsed,
+                        // &attached_file,
+                        // &params,
+                        // &file_hash,
+                        // file_size,
+                        // &mime_type,
+                        // ).await
+                        // {
+                        //     Ok(_) =>{
+                        //         println!("Upload successful");
+                        //         true
+                        //     }
+                        //     Err(e0) =>{
+                        //         error!("Failed to send attachment rumor: {}", e0);
+                        //         return false;
+                        //     }
+                        // }
+                    }
+                    Err(e1) => {
+                        error!("Failed to send attachment rumor: {}", e1);
+                        panic!("Failed to send attachment rumor: {}", e1);
+                    }
+                }
+            },
+            Err(e) => {
+                // The file upload failed: so we mark the message as failed and notify of an error
+                // Return the error
+                eprintln!("[Blossom Error] Upload failed: {}", e);
+                panic!("[Blossom Error] Upload failed: {}", e);
+            }
+        }
+
+        Ok(())
+    }
+
 }
 /// Represents a communication channel with a specific recipient.
 pub struct Channel {
