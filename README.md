@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Vector Bot Library is a Rust-based library for creating and managing vector bots that can send and receive private messages using the Nostr protocol. This library provides a structured and modular approach to building bots with configurable metadata and client settings.
+The Vector Bot Library is a Rust-based library for creating and managing Vector Bots that can send and receive private messages using the Nostr protocol. This library provides a structured and modular approach to building bots with configurable metadata and client settings.
 
 ## Features
 
