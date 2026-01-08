@@ -515,37 +515,66 @@ impl Group {
         Ok(())
     }
 
-    // Sends a typing indicator
-    pub async fn send_group_typing_indicator(&self)-> bool {
-        // debug!("Sending kind 30078 typing indicator to: {:?}", self.recipient);
+    /// Sends a typing indicator to the group.
+    ///
+    /// This function sends a typing indicator event to all members of the group.
+    ///
+    /// # Returns
+    ///
+    /// `true` if the typing indicator was sent successfully, `false` otherwise.
+    pub async fn send_group_typing_indicator(&self) -> bool {
+        debug!("Sending typing indicator to group: {:?}", &self.group.mls_group_id);
 
-        // // We need to send "typing" & an expiration
-        // let content = String::from("typing");
-        // // For expiration lets just set max for now
-        // let expiration = Timestamp::from_secs(
-        //     std::time::SystemTime::now()
-        //         .duration_since(std::time::UNIX_EPOCH)
-        //         .unwrap()
-        //         .as_secs()
-        //         + 30,
-        // );
+        // Build a typing indicator event
+        let content = String::from("typing");
+        let expiration = Timestamp::from_secs(
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs()
+                + 30,
+        );
 
-        // // Create and send the kind30078 with our typing tag
-        // if let Err(err) = send_kind30078(
-        //     &self.base_bot,
-        //     &self.recipient,
-        //     content,
-        //     expiration,
-        // )
-        // .await
-        // {
-        //     error!("Failed to send attachment rumor: {}", err);
-        //     return false;
-        // }
-        // true
+        // Add millisecond precision tag
+        let final_time = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap();
+        let milliseconds = final_time.as_millis() % 1000;
 
-        
-        true
+        // Build the typing indicator rumor
+        let rumor = EventBuilder::new(Kind::ApplicationSpecificData, content)
+            .tag(Tag::custom(TagKind::d(), vec!["vector"]))
+            .tag(Tag::custom(TagKind::custom("ms"), [milliseconds.to_string()]))
+            .tag(Tag::expiration(expiration));
+
+        let built_rumor = rumor.build(self.base_bot.keys.public_key());
+
+        // Wrap the rumor in an MLS message for the group
+        let engine = match self.base_bot.device_mdk.engine() {
+            Ok(e) => e,
+            Err(e) => {
+                error!("Failed to get MLS engine: {}", e);
+                return false;
+            }
+        };
+
+        let group_message_creation = match engine.create_message(&self.group.mls_group_id, built_rumor.clone()) {
+            Ok(msg) => msg,
+            Err(_) => {
+                error!("Error creating the group typing indicator event");
+                return false;
+            }
+        };
+
+        debug!("Successfully created the typing indicator message");
+
+        match self.base_bot.client.send_event(&group_message_creation).await {
+            Ok(_) => true,
+            Err(e) => {
+                error!("Error sending typing indicator event: {:?}", e);
+                false
+            }
+        }
     }
 
     pub async fn send_group_attachment(&self, file: Option<AttachmentFile>) -> Result<(), String> {
