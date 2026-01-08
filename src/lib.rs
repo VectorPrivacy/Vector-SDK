@@ -272,179 +272,154 @@ impl VectorBot {
         }
     }
 
-    // Take our welcome and checkout the information from the group so that we can make a decision if its a group we want to join or not
+    /// Takes a welcome event and checks out the group information.
+    ///
+    /// This function processes a welcome event to retrieve group information
+    /// and determine if it's a group the bot wants to join.
+    ///
+    /// # Arguments
+    ///
+    /// * `welcome_event` - The unsigned welcome event to process.
+    ///
+    /// # Returns
+    ///
+    /// A Result containing the group information or an error message.
+    pub async fn checkout_group(&self, welcome_event: UnsignedEvent) -> Result<mdk_storage_traits::groups::types::Group, String> {
+        let engine = self.device_mdk.engine()
+            .map_err(|e| format!("Failed to get MLS engine: {}", e))?;
 
-    pub async fn checkout_group(&self, welcome_event: UnsignedEvent) -> Result<mdk_storage_traits::groups::types::Group, String>{
-
-        let engine = match self.device_mdk.engine().map_err(|e| format!("Failed to get MLS engine: {}", e)){
-            Ok(engine) => engine,
-            Err(_) => {
-                error!("Engine failure");
-                return Err("Engine failure".to_string());
-            }
-        };
-
-        let wrapper_event_id = match welcome_event.id {
-            Some(inner) => inner,
-            None => {
-                error!("Event Id not set");
-                return Err("Event Id not set".to_string());
-            }
-        };
+        let wrapper_event_id = welcome_event.id
+            .ok_or_else(|| "Event Id not set".to_string())?;
 
         let process_welcome_result = engine.process_welcome(&wrapper_event_id, &welcome_event);
 
-        println!("Process Welcome Result: {:#?}", process_welcome_result);
+        debug!("Process Welcome Result: {:#?}", process_welcome_result);
 
         match process_welcome_result {
-            Ok(welcome) =>{
-                let bot_groups = match engine.get_group(&welcome.mls_group_id){
-                    Ok(Some(group_information)) =>{
-                        println!("Group info: {:#?}", group_information);
-                        Ok(group_information)
-                    },
-                    Ok(None)=>{
-                        error!("No group with that id");
-                        Err("No group with that id".to_string())
-                    }
-                    Err(_) => {
-                        error!("Error accessing storage");
-                        Err("Error accessing storage".to_string())
-                    }
-                };
-                bot_groups
+            Ok(welcome) => {
+                engine.get_group(&welcome.mls_group_id)
+                    .map_err(|_| "Error accessing storage".to_string())?
+                    .ok_or_else(|| "No group with that id".to_string())
             },
             Err(_) => {
                 error!("Welcome didn't process correctly and couldn't be handled");
                 Err("Welcome didn't process correctly and couldn't be handled".to_string())
             }
         }
-
     }
 
-    // This needs to be a part of the bot because we don't know the group without processing it first
-    pub async fn process_group_message(&self, event:&Event) -> Result<mdk_core::prelude::message_types::Message, String>{
-        println!("PROCESSING GROUP MESSAGE");
-        let engine = match self.device_mdk.engine().map_err(|e| format!("Failed to get MLS engine: {}", e)){
-            Ok(engine) => engine,
-            Err(_) => {
-                error!("Engine failure");
-                return Err("Engine failure".to_string());
-            }
-        };
+    /// Processes a group message event.
+    ///
+    /// This function processes a group message to extract the application message.
+    ///
+    /// # Arguments
+    ///
+    /// * `event` - The event to process.
+    ///
+    /// # Returns
+    ///
+    /// A Result containing the message or an error message.
+    pub async fn process_group_message(&self, event: &Event) -> Result<mdk_core::prelude::message_types::Message, String> {
+        debug!("Processing group message");
+        let engine = self.device_mdk.engine()
+            .map_err(|e| format!("Failed to get MLS engine: {}", e))?;
 
-        let _processing_event = match engine.process_message(event) {
-            Ok(ev) => {
-                match ev {
-                    mdk_core::prelude::MessageProcessingResult::ApplicationMessage(ev) => {
-                        return Ok(ev)
-                    },
-                    // mdk_core::prelude::MessageProcessingResult::Commit { mls_group_id } => {
-                    // },
-                    // mdk_core::prelude::MessageProcessingResult::Proposal(_proposal) => {
-                    // },
-                    // mdk_core::prelude::MessageProcessingResult::Unprocessable { mls_group_id: _ } => {
-                    // },
-                    _ => {
-                        error!("Something went wrong");
-                        return Err("Something went wrong".to_string());
-                    }
-                };
-            }
+        match engine.process_message(event) {
+            Ok(mdk_core::prelude::MessageProcessingResult::ApplicationMessage(msg)) => {
+                Ok(msg)
+            },
+            Ok(_) => {
+                error!("Unsupported message type");
+                Err("Unsupported message type".to_string())
+            },
             Err(_) => {
                 error!("Failed to process message");
-                return Err("Failed to process message".to_string());
+                Err("Failed to process message".to_string())
             }
-        };
-
+        }
     }
 
-    pub async fn join_group(&self, group_id: GroupId) -> Result<Group, String>{
-        let engine = match self.device_mdk.engine().map_err(|e| format!("Failed to get MLS engine: {}", e)){
-            Ok(engine) => engine,
-            Err(_) => {
-                error!("Engine failure");
-                return Err("Engine failure".to_string());
-            }
-        };
+    /// Joins a group by its group ID.
+    ///
+    /// # Arguments
+    ///
+    /// * `group_id` - The ID of the group to join.
+    ///
+    /// # Returns
+    ///
+    /// A Result containing the Group or an error message.
+    pub async fn join_group(&self, group_id: GroupId) -> Result<Group, String> {
+        let engine = self.device_mdk.engine()
+            .map_err(|e| format!("Failed to get MLS engine: {}", e))?;
 
-        // Find group based on group id in our pending welcomes
-        let welcome_result = engine.get_pending_welcomes().map_err(|_| "No welcomes available".to_string())?;
-        let welcome = welcome_result.into_iter().find(|wi| wi.mls_group_id == group_id)
+        let welcome_result = engine.get_pending_welcomes()
+            .map_err(|_| "No welcomes available".to_string())?;
+
+        let welcome = welcome_result.into_iter()
+            .find(|wi| wi.mls_group_id == group_id)
             .ok_or_else(|| "No welcomes available".to_string())?;
 
-        println!("{:#?}", welcome);
+        debug!("Found welcome: {:#?}", welcome);
 
-        match engine.accept_welcome(&welcome){
-            Ok(r)=> println!("Accepted group invite successfully: {:#?}", r),
-            Err(e)=> println!("Failed group invite: {:#?}", e),
-        };
+        if let Err(e) = engine.accept_welcome(&welcome) {
+            error!("Failed to accept welcome: {:#?}", e);
+        }
 
-        // Respond with the group
-        let the_group = self.get_group(welcome.mls_group_id.clone()).await;
-        the_group
-
+        self.get_group(welcome.mls_group_id.clone()).await
     }
 
-    pub async fn quick_join_group(&self, welcome_event: UnsignedEvent) -> Result<Group, String>{
+    /// Quickly joins a group using a welcome event.
+    ///
+    /// # Arguments
+    ///
+    /// * `welcome_event` - The welcome event to process.
+    ///
+    /// # Returns
+    ///
+    /// A Result containing the Group or an error message.
+    pub async fn quick_join_group(&self, welcome_event: UnsignedEvent) -> Result<Group, String> {
+        let engine = self.device_mdk.engine()
+            .map_err(|e| format!("Failed to get MLS engine: {}", e))?;
 
-        let engine = match self.device_mdk.engine().map_err(|e| format!("Failed to get MLS engine: {}", e)){
-            Ok(engine) => engine,
-            Err(_) => {
-                error!("Engine failure");
-                return Err("Engine failure".to_string());
-            }
-        };
+        let wrapper_event_id = welcome_event.id
+            .ok_or_else(|| "Event Id not set".to_string())?;
 
-        let wrapper_event_id = match welcome_event.id {
-            Some(inner) => inner,
-            None => {
-                error!("Event Id not set");
-                return Err("Event Id not set".to_string());
-            }
-        };
+        engine.process_welcome(&wrapper_event_id, &welcome_event)
+            .map_err(|e| format!("Failed to process welcome: {}", e))?;
 
-        let process_welcome_result = engine.process_welcome(&wrapper_event_id, &welcome_event);
-
-        println!("Process Welcome Result: {:#?}", process_welcome_result);
-
-        let welcomes = engine
-            .get_pending_welcomes()
+        let welcomes = engine.get_pending_welcomes()
             .map_err(|_| "Error getting pending welcomes".to_string())?;
-        let welcome = welcomes.first().ok_or_else(|| "No welcomes available".to_string())?;
 
-        println!("{:#?}", welcome);
+        let welcome = welcomes.first()
+            .ok_or_else(|| "No welcomes available".to_string())?;
 
-        match engine.accept_welcome(welcome){
-            Ok(r)=> println!("Accepted group invite successfully: {:#?}", r),
-            Err(e)=> println!("Failed group invite: {:#?}", e),
-        };
+        debug!("Found welcome: {:#?}", welcome);
 
-        let the_group = self.get_group(welcome.mls_group_id.clone()).await;
-        the_group
+        if let Err(e) = engine.accept_welcome(welcome) {
+            error!("Failed to accept welcome: {:#?}", e);
+        }
 
+        self.get_group(welcome.mls_group_id.clone()).await
     }
 
-    // Gets the group
-    // TODO: Filter for group based on ID
-    pub async fn get_group(&self, group_id: GroupId) -> Result<Group, String>{
+    /// Gets a group by its ID.
+    ///
+    /// # Arguments
+    ///
+    /// * `group_id` - The ID of the group to retrieve.
+    ///
+    /// # Returns
+    ///
+    /// A Result containing the Group or an error message.
+    pub async fn get_group(&self, group_id: GroupId) -> Result<Group, String> {
+        let engine = self.device_mdk.engine()
+            .map_err(|e| format!("Failed to get MLS engine: {}", e))?;
 
-        let bot_groups = match self.device_mdk.engine().expect("REASON").get_group(&group_id){
-            Ok(Some(group_information)) =>{
-                println!("Group info: {:#?}", group_information);
-                Ok(Group::new(group_information,self).await)
-            },
-            Ok(None)=>{
-                error!("No group with that id");
-                Err("No group with that id".to_string())
-            }
-            Err(_) => {
-                error!("Error accessing storage");
-                Err("Error accessing storage".to_string())
-            }
-        };
-        bot_groups
+        let group_info = engine.get_group(&group_id)
+            .map_err(|_| "Error accessing storage".to_string())?
+            .ok_or_else(|| "No group with that id".to_string())?;
 
+        Ok(Group::new(group_info, self).await)
     }
 
     /// Gets a chat channel for a specific public key.
@@ -477,99 +452,106 @@ impl Group {
         }
     }
 
+    /// Gets a message by its ID.
+    ///
+    /// # Arguments
+    ///
+    /// * `message_id` - The ID of the message to retrieve.
+    ///
+    /// # Returns
+    ///
+    /// A Result indicating success or failure.
     pub async fn get_message(&self, message_id: &EventId) -> Result<(), String> {
-        let engine = self.base_bot.device_mdk.engine().map_err(|e| format!("Failed to get MLS engine: {}", e))?;
+        let engine = self.base_bot.device_mdk.engine()
+            .map_err(|e| format!("Failed to get MLS engine: {}", e))?;
 
-        let _engine_message = match engine.get_message(message_id){
-            Ok(r)=> {
-                println!("message found: {:#?}", r);
-                r
-            },
-            Err(_)=> {
-                return Err("Error finding the message".to_string());
-            }
-        };
-
+        engine.get_message(message_id)
+            .map_err(|_| "Error finding the message".to_string())?;
         Ok(())
     }
 
-    pub async fn check_group_messages(&self,) -> Result<(), String> {
-        let engine = self.base_bot.device_mdk.engine().map_err(|e| format!("Failed to get MLS engine: {}", e))?;
+    /// Checks all messages in the group.
+    ///
+    /// # Returns
+    ///
+    /// A Result indicating success or failure.
+    pub async fn check_group_messages(&self) -> Result<(), String> {
+        let engine = self.base_bot.device_mdk.engine()
+            .map_err(|e| format!("Failed to get MLS engine: {}", e))?;
 
-        let messages = engine.get_messages(&self.group.mls_group_id).map_err(|e| e.to_string())?;
-        for message in messages{
-            println!("Found messages: {:#?}", message);
-        }
+        let messages = engine.get_messages(&self.group.mls_group_id)
+            .map_err(|e| e.to_string())?;
+        debug!("Found {} messages in group", messages.len());
         Ok(())
     }
 
-    // Send message
-    pub async fn send_group_message(&self, message: &str,) -> Result<(), String> {
+    /// Sends a message to the group.
+    ///
+    /// # Arguments
+    ///
+    /// * `message` - The message content to send.
+    ///
+    /// # Returns
+    ///
+    /// A Result indicating success or failure.
+    pub async fn send_group_message(&self, message: &str) -> Result<(), String> {
+        debug!("Sending a message to the group: {:?}", &self.group.mls_group_id);
 
-        println!("Sending a message to the group: {:#?}, message: {}",&self.group.mls_group_id, message);
-
-        // Vector build the rumors a little differently then the stock mdk
         // Build a minimal inner rumor carrying the plaintext payload.
         let rumor_builder = EventBuilder::new(Kind::PrivateDirectMessage, message);
-
-        // TODO: The following is from the Vector main and should be added once we are done prototyping:
-        // .tag(Tag::custom(
-        //     TagKind::Custom(std::borrow::Cow::Borrowed("vector-mls-msg")),
-        //     // Attach the wire id (UI/relay id) for easier diagnostics
-        //     vec![test],
-        // ));
-
-        // // Add reply tag if replying to a message
-        // if let Some(ref reply_id) = replied_to {
-        //     if !reply_id.is_empty() {
-        //         rumor_builder = rumor_builder.tag(Tag::custom(
-        //             TagKind::e(),
-        //             vec![reply_id, "", "reply"],
-        //         ));
-        //     }
-        // }
-
         let rumor = rumor_builder.build(self.base_bot.keys.public_key());
 
-        let _mls_wrapper_result = {
+        let engine = self.base_bot.device_mdk.engine()
+            .map_err(|e| format!("Failed to get MLS engine: {}", e))?;
 
-            let engine = self.base_bot.device_mdk.engine().map_err(|e| format!("Failed to get MLS engine: {}", e))?;
+        let group_message_creation = engine.create_message(&self.group.mls_group_id, rumor.clone())
+            .map_err(|_| "Error creating the group message event".to_string())?;
 
-            let group_message_creation = match engine.create_message(&self.group.mls_group_id, rumor.clone()){
-                Ok(r)=> {
-                    println!("Successfully created the message: {:#?}", r);
-                    r
-                },
-                Err(_)=> {
-                    return Err("Error creating the group message event".to_string());
-                }
-            };
+        debug!("Successfully created the message");
 
-            println!("Group message creation: {:#?}", group_message_creation);
-
-            let send_group_message_event = match self.base_bot.client.send_event(&group_message_creation).await{
-                Ok(r)=> println!("Event Sent to the network: {:#?}", r),
-                Err(e)=> println!("Error sending event: {:#?}",e),
-            };
-
-            println!("{:#?}", send_group_message_event);
-
-            group_message_creation
-        };
+        self.base_bot.client.send_event(&group_message_creation).await
+            .map_err(|e| format!("Error sending event: {:?}", e))?;
 
         Ok(())
+    }
+
+    // Sends a typing indicator
+    pub async fn send_group_typing_indicator(&self)-> bool {
+        // debug!("Sending kind 30078 typing indicator to: {:?}", self.recipient);
+
+        // // We need to send "typing" & an expiration
+        // let content = String::from("typing");
+        // // For expiration lets just set max for now
+        // let expiration = Timestamp::from_secs(
+        //     std::time::SystemTime::now()
+        //         .duration_since(std::time::UNIX_EPOCH)
+        //         .unwrap()
+        //         .as_secs()
+        //         + 30,
+        // );
+
+        // // Create and send the kind30078 with our typing tag
+        // if let Err(err) = send_kind30078(
+        //     &self.base_bot,
+        //     &self.recipient,
+        //     content,
+        //     expiration,
+        // )
+        // .await
+        // {
+        //     error!("Failed to send attachment rumor: {}", err);
+        //     return false;
+        // }
+        // true
+
+        
+        true
     }
 
     pub async fn send_group_attachment(&self, file: Option<AttachmentFile>) -> Result<(), String> {
-    
+
         let servers = crate::get_blossom_servers();
-        let attached_file = match file {
-            Some(f) => f,
-            None => {
-                error!("No file provided for sending");
-                panic!("Error accessing storage")
-            }
-        };
+        let attached_file = file.ok_or_else(|| "No file provided for sending".to_string())?;
 
         // Calculate the file hash first (before encryption)
         let file_hash = calculate_file_hash(&attached_file.bytes);
@@ -578,31 +560,20 @@ impl Group {
         let mime_type = get_mime_type(&attached_file.extension);
 
         // Generate encryption parameters and encrypt the file
-        let params_result = crypto::generate_encryption_params();
-        let params = match params_result {
-            Ok(p) => p,
-            Err(err) => {
-                error!("Failed to generate encryption parameters: {}", err);
-                panic!("Failed to generate encryption parameters: {}", err);
-            }
-        };
+        let params = crypto::generate_encryption_params()
+            .map_err(|err| format!("Failed to generate encryption parameters: {}", err))?;
 
-        let enc_file = match crypto::encrypt_data(attached_file.bytes.as_slice(), &params) {
-            Ok(data) => data,
-            Err(err) => {
-                error!("Failed to encrypt file: {}", err);
-                panic!("Failed to encrypt file: {}", err);
-            }
-        };
+        let enc_file = crypto::encrypt_data(attached_file.bytes.as_slice(), &params)
+            .map_err(|err| format!("Failed to encrypt file: {}", err))?;
         let file_size = enc_file.len();
 
         // Create a progress callback for file uploads
         let progress_callback: crate::blossom::ProgressCallback = std::sync::Arc::new(move |percentage, _bytes| {
                 if let Some(pct) = percentage {
-                    println!("Upload progress: {}%",pct);
+                    debug!("Upload progress: {}%", pct);
                 }
-            Ok(())
-        });
+                Ok(())
+            });
 
         match crate::blossom::upload_blob_with_progress_and_failover(self.base_bot.keys.clone(),servers,enc_file,Some(mime_type.as_str()),progress_callback, Some(3), Some(std::time::Duration::from_secs(2))).await {
             Ok(url) => {
@@ -686,38 +657,16 @@ impl Group {
 
 
 
-                        // match send_attachment_rumor(
-                        // &self.base_bot,
-                        // &self.recipient,
-                        // &url_parsed,
-                        // &attached_file,
-                        // &params,
-                        // &file_hash,
-                        // file_size,
-                        // &mime_type,
-                        // ).await
-                        // {
-                        //     Ok(_) =>{
-                        //         println!("Upload successful");
-                        //         true
-                        //     }
-                        //     Err(e0) =>{
-                        //         error!("Failed to send attachment rumor: {}", e0);
-                        //         return false;
-                        //     }
-                        // }
                     }
                     Err(e1) => {
                         error!("Failed to send attachment rumor: {}", e1);
-                        panic!("Failed to send attachment rumor: {}", e1);
+                        return Err(format!("Failed to send attachment rumor: {}", e1));
                     }
                 }
             },
             Err(e) => {
-                // The file upload failed: so we mark the message as failed and notify of an error
-                // Return the error
-                eprintln!("[Blossom Error] Upload failed: {}", e);
-                panic!("[Blossom Error] Upload failed: {}", e);
+                error!("[Blossom Error] Upload failed: {}", e);
+                return Err(format!("[Blossom Error] Upload failed: {}", e));
             }
         }
 
@@ -886,50 +835,50 @@ impl Channel {
         // Create a progress callback for file uploads
         let progress_callback: crate::blossom::ProgressCallback = std::sync::Arc::new(move |percentage, _bytes| {
                 if let Some(pct) = percentage {
-                    println!("Upload progress: {}%",pct);
+                    debug!("Upload progress: {}%", pct);
                 }
-            Ok(())
-        });
+                Ok(())
+            });
 
-        match crate::blossom::upload_blob_with_progress_and_failover(self.base_bot.keys.clone(),servers,enc_file,Some(mime_type.as_str()),progress_callback, Some(3), Some(std::time::Duration::from_secs(2))).await {
+        match crate::blossom::upload_blob_with_progress_and_failover(
+            self.base_bot.keys.clone(),
+            servers,
+            enc_file,
+            Some(mime_type.as_str()),
+            progress_callback,
+            Some(3),
+            Some(std::time::Duration::from_secs(2))
+        ).await {
             Ok(url) => {
-                match Url::parse(&url){
-                    Ok(url_parsed) =>{
-                        match send_attachment_rumor(
-                        &self.base_bot,
-                        &self.recipient,
-                        &url_parsed,
-                        &attached_file,
-                        &params,
-                        &file_hash,
-                        file_size,
-                        &mime_type,
-                        ).await
-                        {
-                            Ok(_) =>{
-                                println!("Upload successful");
-                                true
-                            }
-                            Err(e0) =>{
-                                error!("Failed to send attachment rumor: {}", e0);
-                                return false;
-                            }
+                match Url::parse(&url) {
+                    Ok(url_parsed) => {
+                        if let Err(e) = send_attachment_rumor(
+                            &self.base_bot,
+                            &self.recipient,
+                            &url_parsed,
+                            &attached_file,
+                            &params,
+                            &file_hash,
+                            file_size,
+                            &mime_type,
+                        ).await {
+                            error!("Failed to send attachment rumor: {}", e);
+                            return false;
                         }
+                        debug!("Upload successful");
+                        true
                     }
                     Err(e1) => {
-                        error!("Failed to send attachment rumor: {}", e1);
-                        return false;
+                        error!("Failed to parse URL: {}", e1);
+                        false
                     }
                 }
             },
             Err(e) => {
-                // The file upload failed: so we mark the message as failed and notify of an error
-                // Return the error
-                eprintln!("[Blossom Error] Upload failed: {}", e);
-                return false;
+                error!("[Blossom Error] Upload failed: {}", e);
+                false
             }
         }
-
     }
 }
 
