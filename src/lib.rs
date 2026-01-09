@@ -702,6 +702,35 @@ impl Group {
         Ok(())
     }
 
+    /// Sends a reaction to a group message.
+    ///
+    /// This function sends a reaction to a specific message within a group.
+    ///
+    /// # Arguments
+    ///
+    /// * `reference_id` - The ID of the message to react to.
+    /// * `emoji` - The emoji to use for the reaction.
+    ///
+    /// # Returns
+    ///
+    /// `true` if the reaction was sent successfully, `false` otherwise.
+    pub async fn send_group_reaction(&self, reference_id: String, emoji: String) -> bool {
+        debug!("Sending a reaction event to group: {:?}", &self.group.mls_group_id);
+
+        if let Err(err) = send_group_nip25(
+            &self.base_bot,
+            &self.group.mls_group_id,
+            reference_id,
+            emoji,
+        )
+        .await
+        {
+            error!("Failed to send group reaction: {}", err);
+            return false;
+        }
+        true
+    }
+
 }
 /// Represents a communication channel with a specific recipient.
 pub struct Channel {
@@ -781,7 +810,6 @@ impl Channel {
             return false;
         }
         true
-
     }
 
     // Sends a typing indicator
@@ -970,6 +998,47 @@ fn infer_extension_from_bytes(bytes: &[u8]) -> Option<&'static str> {
     }
 
     None
+}
+
+/// Sends a reaction to a group message
+///
+/// # Arguments
+///
+/// * `bot` - A reference to the VectorBot.
+/// * `group_id` - The group ID to send the reaction to.
+/// * `reference_id` - The ID of the message to react to.
+/// * `emoji` - The emoji to use for the reaction.
+///
+/// # Returns
+///
+/// A Result indicating success or failure.
+async fn send_group_nip25(bot: &VectorBot, group_id: &GroupId, reference_id: String, emoji: String) -> Result<(), String> {
+    let reference_event = EventId::from_hex(reference_id.as_str())
+        .map_err(|e| format!("Invalid reference ID: {}", e))?;
+
+    // Create the reaction event
+    let rumor = EventBuilder::reaction_extended(
+        reference_event,
+        bot.keys.public_key(),
+        None, // No specific message type for groups
+        &emoji,
+    );
+
+    let built_rumor = rumor.build(bot.keys.public_key());
+
+    // Wrap the rumor in an MLS message for the group
+    let engine = bot.device_mdk.engine()
+        .map_err(|e| format!("Failed to get MLS engine: {}", e))?;
+
+    let group_message_creation = engine.create_message(group_id, built_rumor.clone())
+        .map_err(|_| "Error creating the group reaction event".to_string())?;
+
+    debug!("Successfully created the group reaction message");
+
+    bot.client.send_event(&group_message_creation).await
+        .map_err(|e| format!("Error sending group reaction event: {:?}", e))?;
+
+    Ok(())
 }
 
 async fn send_nip25(bot: &VectorBot, recipient: &PublicKey, reference_id: String, message_type: Kind, emoji: String) -> Result<(), String>{
