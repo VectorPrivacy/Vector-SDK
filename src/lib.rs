@@ -3,6 +3,7 @@ use ::url::Url;
 use log::{debug, error};
 use nostr_sdk::prelude::*;
 use std::result::Result;
+use thiserror::Error;
 
 // Re-export the Nostr client type for downstream crates
 pub use nostr_sdk::prelude::Client as NostrClient;
@@ -35,6 +36,58 @@ use once_cell::sync::OnceCell;
 use sha2::{Digest, Sha256};
 use magical_rs::magical::bytes_read::with_bytes_read;
 use magical_rs::magical::magic::FileKind;
+
+/// Comprehensive error type for the Vector SDK
+#[derive(Debug, Error)]
+pub enum VectorBotError {
+    #[error("MLS error: {0}")]
+    Mls(#[from] mls::MlsError),
+
+    #[error("Crypto error: {0}")]
+    Crypto(#[from] crate::crypto::CryptoError),
+
+    #[error("Upload error: {0}")]
+    Upload(#[from] crate::upload::UploadError),
+
+    #[error("URL parsing error: {0}")]
+    UrlParse(#[from] url::ParseError),
+
+    #[error("IO error: {0}")]
+    Io(#[from] std::io::Error),
+
+    #[error("Nostr SDK error: {0}")]
+    Nostr(String),
+
+    #[error("Serialization error: {0}")]
+    SerdeJson(#[from] serde_json::Error),
+
+    #[error("Invalid input: {0}")]
+    InvalidInput(String),
+
+    #[error("Network error: {0}")]
+    Network(String),
+
+    #[error("Storage error: {0}")]
+    Storage(String),
+
+    #[error("Metadata error: {0}")]
+    Metadata(#[from] crate::metadata::MetadataError),
+
+    #[error("Subscription error: {0}")]
+    Subscription(#[from] crate::subscription::SubscriptionError),
+}
+
+impl From<String> for VectorBotError {
+    fn from(err: String) -> Self {
+        VectorBotError::Nostr(err)
+    }
+}
+
+impl From<&str> for VectorBotError {
+    fn from(err: &str) -> Self {
+        VectorBotError::Nostr(err.to_string())
+    }
+}
 
 /// # Blossom Media Servers
 ///
@@ -184,25 +237,13 @@ impl VectorBot {
         nip05: String,
         lud16: String,
     ) -> Self {
-
         // MLS
         // Create the mdk instance
-        let device_mdk = match MlsGroup::new_persistent().map_err(|e: mls::MlsError| format!("Failed to create MLS service: {}", e)){
+        let device_mdk = match MlsGroup::new_persistent() {
             Ok(device_mdk) => device_mdk,
             Err(e) => {
                 error!("Error creating MlsGroup: {}", e);
-                return Self {
-                    keys: keys.clone(),
-                    device_mdk: MlsGroup::new_persistent().unwrap(), // Fallback to a default instance
-                    name,
-                    display_name,
-                    about,
-                    picture: Url::parse("https://example.com/default.png").unwrap(),
-                    banner: Url::parse("https://example.com/default.png").unwrap(),
-                    nip05,
-                    lud16,
-                    client: Client::builder().signer(keys.clone()).build(),
-                };
+                panic!("Failed to initialize MLS service: {}", e);
             }
         };
 
@@ -210,18 +251,7 @@ impl VectorBot {
             Ok(url) => url,
             Err(e) => {
                 error!("Invalid picture URL: {}", e);
-                return Self {
-                    keys: keys.clone(),
-                    device_mdk,
-                    name,
-                    display_name,
-                    about,
-                    picture: Url::parse("https://example.com/default.png").unwrap(),
-                    banner: Url::parse("https://example.com/default.png").unwrap(),
-                    nip05,
-                    lud16,
-                    client: Client::builder().signer(keys.clone()).build(),
-                };
+                panic!("Invalid picture URL: {}", e);
             }
         };
 
@@ -229,18 +259,7 @@ impl VectorBot {
             Ok(url) => url,
             Err(e) => {
                 error!("Invalid banner URL: {}", e);
-                return Self {
-                    keys: keys.clone(),
-                    device_mdk,
-                    name,
-                    display_name,
-                    about,
-                    picture: picture_url,
-                    banner: Url::parse("https://example.com/default.png").unwrap(),
-                    nip05,
-                    lud16,
-                    client: Client::builder().signer(keys.clone()).build(),
-                };
+                panic!("Invalid banner URL: {}", e);
             }
         };
 
@@ -284,12 +303,11 @@ impl VectorBot {
     /// # Returns
     ///
     /// A Result containing the group information or an error message.
-    pub async fn checkout_group(&self, welcome_event: UnsignedEvent) -> Result<mdk_storage_traits::groups::types::Group, String> {
-        let engine = self.device_mdk.engine()
-            .map_err(|e| format!("Failed to get MLS engine: {}", e))?;
+    pub async fn checkout_group(&self, welcome_event: UnsignedEvent) -> Result<mdk_storage_traits::groups::types::Group, VectorBotError> {
+        let engine = self.device_mdk.engine()?;
 
         let wrapper_event_id = welcome_event.id
-            .ok_or_else(|| "Event Id not set".to_string())?;
+            .ok_or(VectorBotError::InvalidInput("Event Id not set".to_string()))?;
 
         let process_welcome_result = engine.process_welcome(&wrapper_event_id, &welcome_event);
 
@@ -298,12 +316,12 @@ impl VectorBot {
         match process_welcome_result {
             Ok(welcome) => {
                 engine.get_group(&welcome.mls_group_id)
-                    .map_err(|_| "Error accessing storage".to_string())?
-                    .ok_or_else(|| "No group with that id".to_string())
+                    .map_err(|e| VectorBotError::Storage(format!("Error accessing storage: {}", e)))?
+                    .ok_or_else(|| VectorBotError::InvalidInput("No group with that id".to_string()))
             },
-            Err(_) => {
-                error!("Welcome didn't process correctly and couldn't be handled");
-                Err("Welcome didn't process correctly and couldn't be handled".to_string())
+            Err(e) => {
+                error!("Welcome didn't process correctly and couldn't be handled: {}", e);
+                Err(VectorBotError::Mls(mls::MlsError::NostrMlsError(format!("Welcome processing failed: {}", e))))
             }
         }
     }
@@ -319,10 +337,9 @@ impl VectorBot {
     /// # Returns
     ///
     /// A Result containing the message or an error message.
-    pub async fn process_group_message(&self, event: &Event) -> Result<mdk_core::prelude::message_types::Message, String> {
+    pub async fn process_group_message(&self, event: &Event) -> Result<mdk_core::prelude::message_types::Message, VectorBotError> {
         debug!("Processing group message");
-        let engine = self.device_mdk.engine()
-            .map_err(|e| format!("Failed to get MLS engine: {}", e))?;
+        let engine = self.device_mdk.engine()?;
 
         match engine.process_message(event) {
             Ok(mdk_core::prelude::MessageProcessingResult::ApplicationMessage(msg)) => {
@@ -330,11 +347,11 @@ impl VectorBot {
             },
             Ok(_) => {
                 error!("Unsupported message type");
-                Err("Unsupported message type".to_string())
+                Err(VectorBotError::InvalidInput("Unsupported message type".to_string()))
             },
-            Err(_) => {
-                error!("Failed to process message");
-                Err("Failed to process message".to_string())
+            Err(e) => {
+                error!("Failed to process message: {}", e);
+                Err(VectorBotError::Mls(mls::MlsError::NostrMlsError(format!("Message processing failed: {}", e))))
             }
         }
     }
@@ -348,21 +365,21 @@ impl VectorBot {
     /// # Returns
     ///
     /// A Result containing the Group or an error message.
-    pub async fn join_group(&self, group_id: GroupId) -> Result<Group, String> {
-        let engine = self.device_mdk.engine()
-            .map_err(|e| format!("Failed to get MLS engine: {}", e))?;
+    pub async fn join_group(&self, group_id: GroupId) -> Result<Group, VectorBotError> {
+        let engine = self.device_mdk.engine()?;
 
         let welcome_result = engine.get_pending_welcomes()
-            .map_err(|_| "No welcomes available".to_string())?;
+            .map_err(|e| VectorBotError::Storage(format!("Error getting pending welcomes: {}", e)))?;
 
         let welcome = welcome_result.into_iter()
             .find(|wi| wi.mls_group_id == group_id)
-            .ok_or_else(|| "No welcomes available".to_string())?;
+            .ok_or_else(|| VectorBotError::InvalidInput("No welcomes available".to_string()))?;
 
         debug!("Found welcome: {:#?}", welcome);
 
         if let Err(e) = engine.accept_welcome(&welcome) {
             error!("Failed to accept welcome: {:#?}", e);
+            return Err(VectorBotError::Mls(mls::MlsError::NostrMlsError(format!("Failed to accept welcome: {}", e))));
         }
 
         self.get_group(welcome.mls_group_id.clone()).await
@@ -377,26 +394,26 @@ impl VectorBot {
     /// # Returns
     ///
     /// A Result containing the Group or an error message.
-    pub async fn quick_join_group(&self, welcome_event: UnsignedEvent) -> Result<Group, String> {
-        let engine = self.device_mdk.engine()
-            .map_err(|e| format!("Failed to get MLS engine: {}", e))?;
+    pub async fn quick_join_group(&self, welcome_event: UnsignedEvent) -> Result<Group, VectorBotError> {
+        let engine = self.device_mdk.engine()?;
 
         let wrapper_event_id = welcome_event.id
-            .ok_or_else(|| "Event Id not set".to_string())?;
+            .ok_or(VectorBotError::InvalidInput("Event Id not set".to_string()))?;
 
         engine.process_welcome(&wrapper_event_id, &welcome_event)
-            .map_err(|e| format!("Failed to process welcome: {}", e))?;
+            .map_err(|e| VectorBotError::Mls(mls::MlsError::NostrMlsError(format!("Failed to process welcome: {}", e))))?;
 
         let welcomes = engine.get_pending_welcomes()
-            .map_err(|_| "Error getting pending welcomes".to_string())?;
+            .map_err(|e| VectorBotError::Storage(format!("Error getting pending welcomes: {}", e)))?;
 
         let welcome = welcomes.first()
-            .ok_or_else(|| "No welcomes available".to_string())?;
+            .ok_or_else(|| VectorBotError::InvalidInput("No welcomes available".to_string()))?;
 
         debug!("Found welcome: {:#?}", welcome);
 
         if let Err(e) = engine.accept_welcome(welcome) {
             error!("Failed to accept welcome: {:#?}", e);
+            return Err(VectorBotError::Mls(mls::MlsError::NostrMlsError(format!("Failed to accept welcome: {}", e))));
         }
 
         self.get_group(welcome.mls_group_id.clone()).await
@@ -411,13 +428,12 @@ impl VectorBot {
     /// # Returns
     ///
     /// A Result containing the Group or an error message.
-    pub async fn get_group(&self, group_id: GroupId) -> Result<Group, String> {
-        let engine = self.device_mdk.engine()
-            .map_err(|e| format!("Failed to get MLS engine: {}", e))?;
+    pub async fn get_group(&self, group_id: GroupId) -> Result<Group, VectorBotError> {
+        let engine = self.device_mdk.engine()?;
 
         let group_info = engine.get_group(&group_id)
-            .map_err(|_| "Error accessing storage".to_string())?
-            .ok_or_else(|| "No group with that id".to_string())?;
+            .map_err(|e| VectorBotError::Storage(format!("Error accessing storage: {}", e)))?
+            .ok_or_else(|| VectorBotError::InvalidInput("No group with that id".to_string()))?;
 
         Ok(Group::new(group_info, self).await)
     }
@@ -461,12 +477,11 @@ impl Group {
     /// # Returns
     ///
     /// A Result indicating success or failure.
-    pub async fn get_message(&self, message_id: &EventId) -> Result<(), String> {
-        let engine = self.base_bot.device_mdk.engine()
-            .map_err(|e| format!("Failed to get MLS engine: {}", e))?;
+    pub async fn get_message(&self, message_id: &EventId) -> Result<(), VectorBotError> {
+        let engine = self.base_bot.device_mdk.engine()?;
 
         engine.get_message(message_id)
-            .map_err(|_| "Error finding the message".to_string())?;
+            .map_err(|e| VectorBotError::Storage(format!("Error finding the message: {}", e)))?;
         Ok(())
     }
 
@@ -475,12 +490,11 @@ impl Group {
     /// # Returns
     ///
     /// A Result indicating success or failure.
-    pub async fn check_group_messages(&self) -> Result<(), String> {
-        let engine = self.base_bot.device_mdk.engine()
-            .map_err(|e| format!("Failed to get MLS engine: {}", e))?;
+    pub async fn check_group_messages(&self) -> Result<(), VectorBotError> {
+        let engine = self.base_bot.device_mdk.engine()?;
 
         let messages = engine.get_messages(&self.group.mls_group_id)
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| VectorBotError::Storage(format!("Error getting messages: {}", e)))?;
         debug!("Found {} messages in group", messages.len());
         Ok(())
     }
@@ -494,23 +508,22 @@ impl Group {
     /// # Returns
     ///
     /// A Result indicating success or failure.
-    pub async fn send_group_message(&self, message: &str) -> Result<(), String> {
+    pub async fn send_group_message(&self, message: &str) -> Result<(), VectorBotError> {
         debug!("Sending a message to the group: {:?}", &self.group.mls_group_id);
 
         // Build a minimal inner rumor carrying the plaintext payload.
         let rumor_builder = EventBuilder::new(Kind::PrivateDirectMessage, message);
         let rumor = rumor_builder.build(self.base_bot.keys.public_key());
 
-        let engine = self.base_bot.device_mdk.engine()
-            .map_err(|e| format!("Failed to get MLS engine: {}", e))?;
+        let engine = self.base_bot.device_mdk.engine()?;
 
         let group_message_creation = engine.create_message(&self.group.mls_group_id, rumor.clone())
-            .map_err(|_| "Error creating the group message event".to_string())?;
+            .map_err(|e| VectorBotError::Mls(mls::MlsError::NostrMlsError(format!("Error creating the group message event: {}", e))))?;
 
         debug!("Successfully created the message");
 
         self.base_bot.client.send_event(&group_message_creation).await
-            .map_err(|e| format!("Error sending event: {:?}", e))?;
+            .map_err(|e| VectorBotError::Nostr(format!("Error sending event: {:?}", e)))?;
 
         Ok(())
     }
@@ -560,8 +573,8 @@ impl Group {
 
         let group_message_creation = match engine.create_message(&self.group.mls_group_id, built_rumor.clone()) {
             Ok(msg) => msg,
-            Err(_) => {
-                error!("Error creating the group typing indicator event");
+            Err(e) => {
+                error!("Error creating the group typing indicator event: {}", e);
                 return false;
             }
         };
@@ -577,10 +590,9 @@ impl Group {
         }
     }
 
-    pub async fn send_group_attachment(&self, file: Option<AttachmentFile>) -> Result<(), String> {
-
+    pub async fn send_group_attachment(&self, file: Option<AttachmentFile>) -> Result<(), VectorBotError> {
         let servers = crate::get_blossom_servers();
-        let attached_file = file.ok_or_else(|| "No file provided for sending".to_string())?;
+        let attached_file = file.ok_or_else(|| VectorBotError::InvalidInput("No file provided for sending".to_string()))?;
 
         // Calculate the file hash first (before encryption)
         let file_hash = calculate_file_hash(&attached_file.bytes);
@@ -589,11 +601,9 @@ impl Group {
         let mime_type = get_mime_type(&attached_file.extension);
 
         // Generate encryption parameters and encrypt the file
-        let params = crypto::generate_encryption_params()
-            .map_err(|err| format!("Failed to generate encryption parameters: {}", err))?;
+        let params = crypto::generate_encryption_params()?;
 
-        let enc_file = crypto::encrypt_data(attached_file.bytes.as_slice(), &params)
-            .map_err(|err| format!("Failed to encrypt file: {}", err))?;
+        let enc_file = crypto::encrypt_data(attached_file.bytes.as_slice(), &params)?;
         let file_size = enc_file.len();
 
         // Create a progress callback for file uploads
@@ -604,100 +614,64 @@ impl Group {
                 Ok(())
             });
 
-        match crate::blossom::upload_blob_with_progress_and_failover(self.base_bot.keys.clone(),servers,enc_file,Some(mime_type.as_str()),progress_callback, Some(3), Some(std::time::Duration::from_secs(2))).await {
-            Ok(url) => {
-                match Url::parse(&url){
-                    Ok(url) =>{
+        let url = crate::blossom::upload_blob_with_progress_and_failover(self.base_bot.keys.clone(), servers, enc_file, Some(mime_type.as_str()), progress_callback, Some(3), Some(std::time::Duration::from_secs(2))).await?;
 
-                        // We will just build a custom rumor for now to test
-                        let final_time = std::time::SystemTime::now()
-                            .duration_since(std::time::UNIX_EPOCH)
-                            .unwrap();
-                        let milliseconds = final_time.as_millis() % 1000;
+        let url_parsed = Url::parse(&url)?;
 
-                        // Create the attachment rumor
-                        let mut attachment_rumor = EventBuilder::new(Kind::from_u16(15), url.to_string())
-                            //.tag(Tag::public_key(*recipient))
-                            .tag(Tag::custom(TagKind::custom("file-type"), [mime_type]))
-                            .tag(Tag::custom(
-                                TagKind::custom("size"),
-                                [file_size.to_string()],
-                            ))
-                            .tag(Tag::custom(
-                                TagKind::custom("encryption-algorithm"),
-                                ["aes-gcm"],
-                            ))
-                            .tag(Tag::custom(
-                                TagKind::custom("decryption-key"),
-                                [params.key.as_str()],
-                            ))
-                            .tag(Tag::custom(
-                                TagKind::custom("decryption-nonce"),
-                                [params.nonce.as_str()],
-                            ))
-                            .tag(Tag::custom(TagKind::custom("ox"), [file_hash]))
-                            .tag(Tag::custom(TagKind::custom("ms"), [milliseconds.to_string()]));
+        // We will just build a custom rumor for now to test
+        let final_time = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap();
+        let milliseconds = final_time.as_millis() % 1000;
 
-                        // Append image metadata if available
-                        if let Some(ref img_meta) = attached_file.img_meta {
-                            attachment_rumor = attachment_rumor
-                                .tag(Tag::custom(
-                                    TagKind::custom("blurhash"),
-                                    [&img_meta.blurhash],
-                                ))
-                                .tag(Tag::custom(
-                                    TagKind::custom("dim"),
-                                    [format!("{}x{}", img_meta.width, img_meta.height)],
-                                ));
-                        }
+        // Create the attachment rumor
+        let mut attachment_rumor = EventBuilder::new(Kind::from_u16(15), url_parsed.to_string())
+            .tag(Tag::custom(TagKind::custom("file-type"), [mime_type]))
+            .tag(Tag::custom(
+                TagKind::custom("size"),
+                [file_size.to_string()],
+            ))
+            .tag(Tag::custom(
+                TagKind::custom("encryption-algorithm"),
+                ["aes-gcm"],
+            ))
+            .tag(Tag::custom(
+                TagKind::custom("decryption-key"),
+                [params.key.as_str()],
+            ))
+            .tag(Tag::custom(
+                TagKind::custom("decryption-nonce"),
+                [params.nonce.as_str()],
+            ))
+            .tag(Tag::custom(TagKind::custom("ox"), [file_hash]))
+            .tag(Tag::custom(TagKind::custom("ms"), [milliseconds.to_string()]));
 
-                        let built_rumor = attachment_rumor.build(self.base_bot.keys.public_key());
-
-                        debug!("Sending attachment rumor: {:?}", built_rumor);
-
-
-
-                        let _mls_wrapper_result = {
-
-                            let engine = self.base_bot.device_mdk.engine().map_err(|e| format!("Failed to get MLS engine: {}", e))?;
-
-                            let group_message_creation = match engine.create_message(&self.group.mls_group_id, built_rumor.clone()){
-                                Ok(r)=> {
-                                    println!("Successfully created the message: {:#?}", r);
-                                    r
-                                },
-                                Err(_)=> {
-                                    return Err("Error creating the group message event".to_string());
-                                }
-                            };
-
-                            println!("Group message creation: {:#?}", group_message_creation);
-
-                            let send_group_message_event = match self.base_bot.client.send_event(&group_message_creation).await{
-                                Ok(r)=> println!("Event Sent to the network: {:#?}", r),
-                                Err(e)=> println!("Error sending event: {:#?}",e),
-                            };
-
-                            println!("{:#?}", send_group_message_event);
-
-                            group_message_creation
-                        };
-
-
-
-
-                    }
-                    Err(e1) => {
-                        error!("Failed to send attachment rumor: {}", e1);
-                        return Err(format!("Failed to send attachment rumor: {}", e1));
-                    }
-                }
-            },
-            Err(e) => {
-                error!("[Blossom Error] Upload failed: {}", e);
-                return Err(format!("[Blossom Error] Upload failed: {}", e));
-            }
+        // Append image metadata if available
+        if let Some(ref img_meta) = attached_file.img_meta {
+            attachment_rumor = attachment_rumor
+                .tag(Tag::custom(
+                    TagKind::custom("blurhash"),
+                    [&img_meta.blurhash],
+                ))
+                .tag(Tag::custom(
+                    TagKind::custom("dim"),
+                    [format!("{}x{}", img_meta.width, img_meta.height)],
+                ));
         }
+
+        let built_rumor = attachment_rumor.build(self.base_bot.keys.public_key());
+
+        debug!("Sending attachment rumor: {:?}", built_rumor);
+
+        let engine = self.base_bot.device_mdk.engine()?;
+
+        let group_message_creation = engine.create_message(&self.group.mls_group_id, built_rumor.clone())
+            .map_err(|e| VectorBotError::Mls(mls::MlsError::NostrMlsError(format!("Error creating the group message event: {}", e))))?;
+
+        debug!("Successfully created the message");
+
+        self.base_bot.client.send_event(&group_message_creation).await
+            .map_err(|e| VectorBotError::Nostr(format!("Error sending event: {:?}", e)))?;
 
         Ok(())
     }
@@ -730,8 +704,8 @@ impl Group {
         }
         true
     }
-
 }
+
 /// Represents a communication channel with a specific recipient.
 pub struct Channel {
     recipient: PublicKey,
@@ -1012,9 +986,9 @@ fn infer_extension_from_bytes(bytes: &[u8]) -> Option<&'static str> {
 /// # Returns
 ///
 /// A Result indicating success or failure.
-async fn send_group_nip25(bot: &VectorBot, group_id: &GroupId, reference_id: String, emoji: String) -> Result<(), String> {
+async fn send_group_nip25(bot: &VectorBot, group_id: &GroupId, reference_id: String, emoji: String) -> Result<(), VectorBotError> {
     let reference_event = EventId::from_hex(reference_id.as_str())
-        .map_err(|e| format!("Invalid reference ID: {}", e))?;
+        .map_err(|e| VectorBotError::InvalidInput(format!("Invalid reference ID: {}", e)))?;
 
     // Create the reaction event
     let rumor = EventBuilder::reaction_extended(
@@ -1027,23 +1001,22 @@ async fn send_group_nip25(bot: &VectorBot, group_id: &GroupId, reference_id: Str
     let built_rumor = rumor.build(bot.keys.public_key());
 
     // Wrap the rumor in an MLS message for the group
-    let engine = bot.device_mdk.engine()
-        .map_err(|e| format!("Failed to get MLS engine: {}", e))?;
+    let engine = bot.device_mdk.engine()?;
 
     let group_message_creation = engine.create_message(group_id, built_rumor.clone())
-        .map_err(|_| "Error creating the group reaction event".to_string())?;
+        .map_err(|e| VectorBotError::Mls(mls::MlsError::NostrMlsError(format!("Error creating the group reaction event: {}", e))))?;
 
     debug!("Successfully created the group reaction message");
 
     bot.client.send_event(&group_message_creation).await
-        .map_err(|e| format!("Error sending group reaction event: {:?}", e))?;
+        .map_err(|e| VectorBotError::Nostr(format!("Error sending group reaction event: {:?}", e)))?;
 
     Ok(())
 }
 
-async fn send_nip25(bot: &VectorBot, recipient: &PublicKey, reference_id: String, message_type: Kind, emoji: String) -> Result<(), String>{
-
-    let reference_event = EventId::from_hex(reference_id.as_str()).unwrap();
+async fn send_nip25(bot: &VectorBot, recipient: &PublicKey, reference_id: String, message_type: Kind, emoji: String) -> Result<(), VectorBotError> {
+    let reference_event = EventId::from_hex(reference_id.as_str())
+        .map_err(|e| VectorBotError::InvalidInput(format!("Invalid reference ID: {}", e)))?;
 
     let rumor = EventBuilder::reaction_extended(
         reference_event,
@@ -1062,20 +1035,18 @@ async fn send_nip25(bot: &VectorBot, recipient: &PublicKey, reference_id: String
         Ok(output) => {
             if output.success.is_empty() && !output.failed.is_empty() {
                 error!("Failed to send attachment rumor: {:?}", output);
-                return Err("Failed to send attachment rumor".to_string());
+                return Err(VectorBotError::Nostr("Failed to send attachment rumor".to_string()));
             }
             Ok(())
         }
         Err(e) => {
             error!("Error sending attachment rumor: {:?}", e);
-            Err(format!("Error sending attachment rumor: {:?}", e))
+            Err(VectorBotError::Nostr(format!("Error sending attachment rumor: {:?}", e)))
         }
     }
-
 }
 
-async fn send_kind30078(bot: &VectorBot, recipient: &PublicKey, content: String, expiration: Timestamp)-> Result<(), String>{
-
+async fn send_kind30078(bot: &VectorBot, recipient: &PublicKey, content: String, expiration: Timestamp) -> Result<(), VectorBotError> {
     // Build and broadcast the Typing Indicator
     // Add millisecond precision tag so clients can order messages sent within the same second
     let final_time = std::time::SystemTime::now()
@@ -1108,16 +1079,15 @@ async fn send_kind30078(bot: &VectorBot, recipient: &PublicKey, content: String,
         Ok(output) => {
             if output.success.is_empty() && !output.failed.is_empty() {
                 error!("Failed to send attachment rumor: {:?}", output);
-                return Err("Failed to send attachment rumor".to_string());
+                return Err(VectorBotError::Nostr("Failed to send attachment rumor".to_string()));
             }
             Ok(())
         }
         Err(e) => {
             error!("Error sending attachment rumor: {:?}", e);
-            Err(format!("Error sending attachment rumor: {:?}", e))
+            Err(VectorBotError::Nostr(format!("Error sending attachment rumor: {:?}", e)))
         }
     }
-
 }
 
 /// Sends an attachment rumor to the recipient.
@@ -1145,7 +1115,7 @@ async fn send_attachment_rumor(
     file_hash: &str,
     file_size: usize,
     mime_type: &str,
-) -> Result<(), String> {
+) -> Result<(), VectorBotError> {
     // Add millisecond precision tag so clients can order messages sent within the same second
     let final_time = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -1200,13 +1170,13 @@ async fn send_attachment_rumor(
         Ok(output) => {
             if output.success.is_empty() && !output.failed.is_empty() {
                 error!("Failed to send attachment rumor: {:?}", output);
-                return Err("Failed to send attachment rumor".to_string());
+                return Err(VectorBotError::Nostr("Failed to send attachment rumor".to_string()));
             }
             Ok(())
         }
         Err(e) => {
             error!("Error sending attachment rumor: {:?}", e);
-            Err(format!("Error sending attachment rumor: {:?}", e))
+            Err(VectorBotError::Nostr(format!("Error sending attachment rumor: {:?}", e)))
         }
     }
 }
