@@ -1,5 +1,21 @@
 # Vector Bot Library
 
+## Table of Contents
+
+- [Overview](#overview)
+- [Features](#features)
+- [Documentation](#documentation)
+- [Architecture](#architecture)
+- [Installation](#installation)
+- [Usage](#usage)
+  - [Sending a Text Message](#sending-a-text-message)
+  - [Sending an Image](#sending-an-image)
+  - [Creating an Attachment from in-memory bytes](#creating-an-attachment-from-in-memory-bytes)
+  - [Typing indicators](#typing-indicators)
+- [Components](#components)
+- [Dependencies](#dependencies)
+- [License](#license)
+
 ## Overview
 
 The Vector Bot Library is a Rust-based library for creating and managing vector bots that can send and receive private messages using the Nostr protocol. This library provides a structured and modular approach to building bots with configurable metadata and client settings.
@@ -12,6 +28,31 @@ The Vector Bot Library is a Rust-based library for creating and managing vector 
 - Configure proxy settings for .onion relays
 - Add and manage relays
 - Modular architecture for easy extension and maintenance
+- Message Layer Security (MLS) for group messaging
+- Typing indicators for real-time feedback
+- Reaction support for messages
+- File uploads with progress tracking
+- Automatic failover for media servers
+
+## Documentation
+
+For comprehensive documentation, see:
+
+- **[CONTRIBUTING.md](CONTRIBUTING.md)** - Development guidelines and contribution process
+- **[SECURITY.md](SECURITY.md)** - Security features, best practices, and threat model
+- **[ADVANCED.md](ADVANCED.md)** - Advanced features including MLS, typing indicators, and debugging
+- **[TROUBLESHOOTING.md](TROUBLESHOOTING.md)** - Common issues and solutions
+- **[CHANGELOG.md](CHANGELOG.md)** - Release history and changes
+
+## Examples
+
+For practical examples and working code demonstrations, see the [Vector-SDK-Example](https://github.com/Luke-Larsen/Vector-SDK-Example) repository, which contains:
+- Basic bot setup examples
+- Direct messaging implementations
+- Group messaging examples
+- File handling demonstrations
+- Advanced use cases
+- Complete working applications
 
 ## Architecture
 
@@ -24,6 +65,8 @@ The library is organized into several modules, each responsible for a specific a
 5. **Subscription**: Functions for setting up event subscriptions.
 6. **Crypto**: Functions for encryption and decryption.
 7. **Upload**: Functions for handling file uploads.
+8. **MLS**: Message Layer Security for group messaging.
+9. **Blossom**: Media server integration for file uploads.
 
 ### High-Level Architecture
 
@@ -40,10 +83,14 @@ The library is organized into several modules, each responsible for a specific a
 | - nip05             |
 | - lud16             |
 | - client            |
+| - device_mdk        |
 |---------------------|
 | + quick()           |
 | + new()             |
 | + get_chat()        |
+| + get_group()       |
+| + checkout_group()  |
+| + process_group_message() |
 +---------------------+
           |
           v
@@ -54,7 +101,25 @@ The library is organized into several modules, each responsible for a specific a
 | - base_bot          |
 |---------------------|
 | + new()             |
-| + send_private_msg()|
+| + send_private_message()|
+| + send_private_file()|
+| + send_typing_indicator()|
+| + send_reaction()   |
++---------------------+
+
++---------------------+
+|      Group         |
+|---------------------|
+| - group             |
+| - base_bot          |
+|---------------------|
+| + new()             |
+| + get_message()     |
+| + check_group_messages()|
+| + send_group_message()|
+| + send_group_attachment()|
+| + send_group_typing_indicator()|
+| + send_group_reaction()|
 +---------------------+
 
 +---------------------+
@@ -67,6 +132,7 @@ The library is organized into several modules, each responsible for a specific a
 |     Metadata       |
 |---------------------|
 | + create_metadata()|
+| + MetadataConfigBuilder |
 +---------------------+
 
 +---------------------+
@@ -88,7 +154,23 @@ The library is organized into several modules, each responsible for a specific a
 |---------------------|
 | + upload_data_with_progress() |
 +---------------------+
+
++---------------------+
+|      Blossom       |
+|---------------------|
+| + upload_blob_with_progress_and_failover() |
++---------------------+
+
++---------------------+
+|        MLS         |
+|---------------------|
+| + MlsGroup          |
+| + new_persistent() |
+| + engine()          |
++---------------------+
 ```
+
+For more detailed information about the architecture and advanced features, see [ADVANCED.md](ADVANCED.md).
 
 ## Installation
 
@@ -175,11 +257,40 @@ let attachment = AttachmentFile::from_bytes(bytes);
 ```
 
 ### Typing indicators
-This is useful for when a bot needs to retrieve information or is "thinking"
 
+Typing indicators provide real-time feedback to recipients that a bot is composing a message. This is useful when a bot needs to retrieve information or is "thinking" before responding.
+
+```rust
+use vector_sdk::VectorBot;
+use nostr_sdk::prelude::*;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Generate new random keys
+    let keys = Keys::generate();
+
+    // Create a new VectorBot with default metadata
+    let bot = VectorBot::quick(keys).await;
+
+    // Get a chat channel for a specific public key
+    let chat_npub = PublicKey::from_bech32("npub1example...")?;
+    let chat = bot.get_chat(chat_npub).await;
+
+    // Send typing indicator (shows "recipient is typing...")
+    chat.send_typing_indicator().await;
+
+    // Simulate work (e.g., fetching data, processing)
+    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+
+    // Send the actual message
+    let success = chat.send_private_message("Here's my response!").await;
+    println!("Message sent: {}", success);
+
+    Ok(())
+}
 ```
-Work in progress
-```
+
+For more information about typing indicators and their implementation, see [ADVANCED.md](ADVANCED.md#typing-indicators).
 
 
 
