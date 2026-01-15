@@ -549,9 +549,14 @@ impl Group {
         );
 
         // Add millisecond precision tag
-        let final_time = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap();
+        let final_time = match std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH) {
+            Ok(d) => d,
+            Err(e) => {
+                error!("Time calculation error: {}", e);
+                return false;
+            }
+        };
         let milliseconds = final_time.as_millis() % 1000;
 
         // Build the typing indicator rumor
@@ -619,9 +624,14 @@ impl Group {
         let url_parsed = Url::parse(&url)?;
 
         // We will just build a custom rumor for now to test
-        let final_time = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap();
+        let final_time = match std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH) {
+            Ok(d) => d,
+            Err(e) => {
+                error!("Time calculation error: {}", e);
+                return Err(VectorBotError::InvalidInput(format!("Time calculation error: {}", e)));
+            }
+        };
         let milliseconds = final_time.as_millis() % 1000;
 
         // Create the attachment rumor
@@ -742,9 +752,14 @@ impl Channel {
         debug!("Sending private message to: {:?}", self.recipient);
 
         // Add millisecond precision tag so clients can order messages sent within the same second
-        let final_time = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap();
+        let final_time = match std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH) {
+            Ok(d) => d,
+            Err(e) => {
+                error!("Time calculation error: {}", e);
+                return false;
+            }
+        };
         let milliseconds = final_time.as_millis() % 1000;
 
         match self
@@ -1049,9 +1064,14 @@ async fn send_nip25(bot: &VectorBot, recipient: &PublicKey, reference_id: String
 async fn send_kind30078(bot: &VectorBot, recipient: &PublicKey, content: String, expiration: Timestamp) -> Result<(), VectorBotError> {
     // Build and broadcast the Typing Indicator
     // Add millisecond precision tag so clients can order messages sent within the same second
-    let final_time = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap();
+    let final_time = match std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH) {
+        Ok(d) => d,
+        Err(e) => {
+            error!("Time calculation error: {}", e);
+            return Err(VectorBotError::InvalidInput(format!("Time calculation error: {}", e)));
+        }
+    };
     let milliseconds = final_time.as_millis() % 1000;
 
     let rumor = EventBuilder::new(Kind::ApplicationSpecificData, content)
@@ -1117,9 +1137,14 @@ async fn send_attachment_rumor(
     mime_type: &str,
 ) -> Result<(), VectorBotError> {
     // Add millisecond precision tag so clients can order messages sent within the same second
-    let final_time = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap();
+    let final_time = match std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH) {
+        Ok(d) => d,
+        Err(e) => {
+            error!("Time calculation error: {}", e);
+            return Err(VectorBotError::InvalidInput(format!("Time calculation error: {}", e)));
+        }
+    };
     let milliseconds = final_time.as_millis() % 1000;
 
     // Create the attachment rumor
