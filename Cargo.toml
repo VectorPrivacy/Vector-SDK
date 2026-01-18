@@ -36,3 +36,8 @@ mime_guess = "2"
 magical_rs = "0.4.5"
 
 base64 = "0.22.1"
+
+[dev-dependencies]
+tempfile = "3.15.0"
+mockall = "0.13.1"
+serial_test = "3.2.0"
