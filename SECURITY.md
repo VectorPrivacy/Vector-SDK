@@ -11,6 +11,8 @@ This document provides an overview of the security features, best practices, and
 - [Best Practices](#best-practices)
 - [Vulnerability Reporting](#vulnerability-reporting)
 - [Dependencies](#dependencies)
+- [Key Management Guidelines](#key-management-guidelines)
+- [MLS Security Considerations](#mls-security-considerations)
 
 ## Overview
 
@@ -177,7 +179,48 @@ Vector SDK uses the following security-critical dependencies:
 - Security advisories are monitored
 - Vulnerable dependencies are patched promptly
 
-## Security Checklist for Applications
+## Key Management Guidelines
+
+### Private Key Storage
+
+**Do:**
+- Use platform-specific secure storage (Keychain on macOS, Keystore on Android, etc.)
+- Encrypt keys at rest with strong passphrases
+- Implement proper access controls
+- Rotate keys periodically
+
+**Don't:**
+- Hardcode keys in source code
+- Store keys in plaintext files
+- Commit keys to version control
+- Share keys between applications
+
+### Key Rotation
+
+While Vector SDK doesn't enforce key rotation, applications should implement their own policies:
+
+1. **Regular Rotation**: Rotate keys every 6-12 months
+2. **Event-Based Rotation**: Rotate after security incidents
+3. **Compromise Detection**: Monitor for unusual activity
+4. **Graceful Transition**: Support multiple active keys during rotation
+
+## MLS Security Considerations
+
+### Group Security
+
+- **Group IDs**: Unique identifiers for each group, stored securely
+- **Welcome Events**: Verify welcome events before accepting
+- **Member Management**: Only authorized members can add/remove participants
+- **Message Processing**: All messages are validated before decryption
+
+### Storage Security
+
+- **SQLite Database**: MLS group state is stored in `mls/vector-mls.db`
+- **Encryption**: Consider encrypting the SQLite database at rest
+- **Backup**: Regularly backup group state for recovery
+- **Cleanup**: Remove old group data when no longer needed
+
+### Security Checklist for Applications
 
 When building applications with Vector SDK, consider this checklist:
 
@@ -191,6 +234,8 @@ When building applications with Vector SDK, consider this checklist:
 - [ ] Session management is secure
 - [ ] Dependencies are kept updated
 - [ ] Security headers are set (for web apps)
+- [ ] MLS database is backed up regularly
+- [ ] Key rotation policy is documented
 
 ## Resources
 
@@ -199,3 +244,4 @@ When building applications with Vector SDK, consider this checklist:
 - [NIP-25: Reactions](https://github.com/nostr-protocol/nips/blob/master/25.md)
 - [AES-GCM Specification](https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-38D.pdf)
 - [Rust Crypto](https://github.com/RustCrypto)
+- [MLS Protocol](https://messaginglayersecurity.rocks/)

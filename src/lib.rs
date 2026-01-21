@@ -173,6 +173,7 @@ impl VectorBot {
             "example@example.com".to_string(),
         )
         .await
+        .expect("Failed to create VectorBot with default metadata")
     }
 
     /// Creates a new VectorBot with custom metadata.
@@ -222,6 +223,7 @@ impl VectorBot {
             lud16,
         )
         .await
+        .expect("Failed to create VectorBot with custom metadata")
     }
 
     /// Creates a new VectorBot with the given metadata.
@@ -236,32 +238,26 @@ impl VectorBot {
         banner: impl AsRef<str>,
         nip05: String,
         lud16: String,
-    ) -> Self {
+    ) -> Result<Self, VectorBotError> {
         // MLS
         // Create the mdk instance
-        let device_mdk = match MlsGroup::new_persistent() {
-            Ok(device_mdk) => device_mdk,
-            Err(e) => {
+        let device_mdk = MlsGroup::new_persistent()
+            .map_err(|e| {
                 error!("Error creating MlsGroup: {}", e);
-                panic!("Failed to initialize MLS service: {}", e);
-            }
-        };
+                VectorBotError::Mls(e)
+            })?;
 
-        let picture_url = match Url::parse(picture.as_ref()) {
-            Ok(url) => url,
-            Err(e) => {
+        let picture_url = Url::parse(picture.as_ref())
+            .map_err(|e| {
                 error!("Invalid picture URL: {}", e);
-                panic!("Invalid picture URL: {}", e);
-            }
-        };
+                VectorBotError::UrlParse(e)
+            })?;
 
-        let banner_url = match Url::parse(banner.as_ref()) {
-            Ok(url) => url,
-            Err(e) => {
+        let banner_url = Url::parse(banner.as_ref())
+            .map_err(|e| {
                 error!("Invalid banner URL: {}", e);
-                panic!("Invalid banner URL: {}", e);
-            }
-        };
+                VectorBotError::UrlParse(e)
+            })?;
 
         let client = build_client(
             keys.clone(),
@@ -277,7 +273,7 @@ impl VectorBot {
         )
         .await;
 
-        Self {
+        Ok(Self {
             keys,
             device_mdk,
             name,
@@ -288,7 +284,7 @@ impl VectorBot {
             nip05,
             lud16,
             client,
-        }
+        })
     }
 
     /// Takes a welcome event and checks out the group information.
@@ -382,7 +378,7 @@ impl VectorBot {
             return Err(VectorBotError::Mls(mls::MlsError::NostrMlsError(format!("Failed to accept welcome: {}", e))));
         }
 
-        self.get_group(welcome.mls_group_id.clone()).await
+        self.get_group(welcome.mls_group_id).await
     }
 
     /// Quickly joins a group using a welcome event.

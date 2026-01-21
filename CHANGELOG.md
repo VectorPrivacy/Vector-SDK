@@ -5,7 +5,7 @@ All notable changes to the Vector SDK will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.3.0] - 2026-01-20
 
 ### Added
 - Initial implementation of MLS (Message Layer Security) support for group messaging
@@ -15,19 +15,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Reaction support for messages (NIP-25)
 - Image metadata extraction (blurhash, dimensions)
 - File type inference from bytes for attachments without extensions
+- Comprehensive error handling with `VectorBotError` enum
+- MLS Implementation Status documentation in README.md
+- Enhanced security documentation for key management and MLS
 
 ### Changed
-- Improved error handling with comprehensive error types
+- Improved error handling - replaced `panic!()` calls with proper error propagation
 - Enhanced logging throughout the library
 - Better organization of modules and exports
+- Version bump from 0.2.1 to 0.3.0 to reflect MLS additions
 
 ### Fixed
 - Various bug fixes and stability improvements
+- Proper error handling in bot initialization
+- Type conversion issues in MLS group operations
 
 ### Security
 - Strong encryption using AES-256-GCM
 - Secure random key generation for encryption
 - Proper handling of cryptographic operations
+- Updated security documentation with key management guidelines
+- MLS storage security considerations
+
+### Deprecated
+- None
+
+### Removed
+- None
+
+### MLS Implementation Status
+
+The following MLS features are fully implemented and ready for use:
+- ✅ Group joining via welcome events
+- ✅ Group message sending and processing
+- ✅ Group typing indicators
+- ✅ Group file attachments
+- ✅ Group reactions
+- ✅ Persistent SQLite-backed storage
+
+The following MLS functions exist as placeholders and will be implemented in future versions:
+- ⚠️ `create_group()` - Group creation
+- ⚠️ `add_member_device()` - Adding members
+- ⚠️ `leave_group()` - Leaving groups
+- ⚠️ `remove_member_device_from_group()` - Removing members
+
+These placeholder functions return errors if called but are included to provide a complete API surface for future expansion.
 
 ## [0.2.1] - 2024-01-15
 
@@ -69,6 +101,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Core module organization
 - Initial documentation
 
-[Unreleased]: https://github.com/VectorPrivacy/Vector-SDK/compare/v0.2.1...HEAD
+[0.3.0]: https://github.com/VectorPrivacy/Vector-SDK/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/VectorPrivacy/Vector-SDK/compare/v0.1.0...v0.2.1
 [0.1.0]: https://github.com/VectorPrivacy/Vector-SDK/releases/tag/v0.1.0

@@ -34,6 +34,28 @@ The Vector Bot Library is a Rust-based library for creating and managing vector 
 - File uploads with progress tracking
 - Automatic failover for media servers
 
+### MLS Implementation Status
+
+The Vector SDK includes **Message Layer Security (MLS)** support for group messaging. The following MLS features are currently implemented and ready for use:
+
+✅ **Implemented Features:**
+- Group joining via welcome events
+- Group message sending and processing
+- Group typing indicators
+- Group file attachments
+- Group reactions
+- Persistent SQLite-backed storage for group state
+
+⚠️ **Placeholder Functions (Not Yet Implemented):**
+The following MLS functions exist as stubs and will be implemented in future versions when needed:
+- `create_group()` - Group creation functionality
+- `add_member_device()` - Adding members to groups
+- `leave_group()` - Leaving groups
+- `remove_member_device_from_group()` - Removing members
+- `send_group_message()` - Direct group message sending (use `Group::send_group_message()` instead)
+
+These placeholder functions are available in the API but will return errors if called. They are included to provide a complete API surface for future expansion.
+
 ## Documentation
 
 For comprehensive documentation, see:
