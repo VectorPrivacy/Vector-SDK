@@ -200,7 +200,7 @@ To use the Vector Bot Library, add it as a dependency in your `Cargo.toml`:
 
 ```toml
 [dependencies]
-vector_sdk = "0.2.1"
+vector_sdk = "0.3.0"
 ```
 
 ## Usage

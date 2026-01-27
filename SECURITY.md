@@ -216,9 +216,22 @@ While Vector SDK doesn't enforce key rotation, applications should implement the
 ### Storage Security
 
 - **SQLite Database**: MLS group state is stored in `mls/vector-mls.db`
-- **Encryption**: Consider encrypting the SQLite database at rest
-- **Backup**: Regularly backup group state for recovery
-- **Cleanup**: Remove old group data when no longer needed
+- **Database Location**: The database is created in the `mls/` directory relative to your application's data directory. The exact path depends on your operating system:
+  - Linux: `~/.local/share/your_app/mls/vector-mls.db`
+  - macOS: `~/Library/Application Support/your_app/mls/vector-mls.db`
+  - Windows: `%APPDATA%\your_app\mls\vector-mls.db`
+- **Encryption at Rest**: Consider encrypting the SQLite database at rest using platform-specific encryption APIs:
+  - macOS: Use Keychain or FileVault
+  - iOS: Use Keychain or Data Protection
+  - Android: Use Android Keystore System
+  - Linux/Windows: Use platform-specific encryption tools
+- **Backup**: Regularly backup the `mls/vector-mls.db` file for recovery. The database contains:
+  - Group membership information
+  - Cryptographic keys and key packages
+  - Message history and state
+  - Without this backup, you may lose access to group conversations
+- **Cleanup**: Remove old group data when no longer needed to reduce attack surface
+- **Database Permissions**: Ensure the database file has appropriate file system permissions to prevent unauthorized access
 
 ### Security Checklist for Applications
 
@@ -235,7 +248,10 @@ When building applications with Vector SDK, consider this checklist:
 - [ ] Dependencies are kept updated
 - [ ] Security headers are set (for web apps)
 - [ ] MLS database is backed up regularly
+- [ ] MLS database is encrypted at rest (recommended)
 - [ ] Key rotation policy is documented
+- [ ] Database file permissions are properly configured
+- [ ] Database backup location is secure
 
 ## Resources
 

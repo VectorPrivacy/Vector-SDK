@@ -115,10 +115,15 @@ impl MlsGroup {
     ///
     /// # Returns
     /// Result containing the created group ID or an error
+    ///
+    /// # Note
+    /// This is a placeholder function that will be implemented in a future version.
+    /// Currently, group creation must be done through welcome events.
+    /// This function returns an error if called.
     pub async fn create_group(&self) -> Result<String, MlsError> {
-        // Stub implementation - actual implementation depends on mdk-core API
-        // This is a placeholder to satisfy the TODO
-        Err(MlsError::NostrMlsError("create_group not yet implemented - requires mdk-core API details".to_string()))
+        Err(MlsError::NostrMlsError(
+            "create_group not yet implemented. Group creation will be added in a future version. Currently, groups can only be joined via welcome events.".to_string(),
+        ))
     }
 
     /// Adds a member device to an existing MLS group.
@@ -131,6 +136,11 @@ impl MlsGroup {
     ///
     /// # Returns
     /// Result indicating success or failure
+    ///
+    /// # Note
+    /// This is a placeholder function that will be implemented in a future version.
+    /// Currently, group membership management is not supported.
+    /// This function returns an error if called.
     pub async fn add_member_device(
         &self,
         group_id: &str,
@@ -138,10 +148,10 @@ impl MlsGroup {
         device_id: &str,
         keypackage_ref: &str,
     ) -> Result<(), MlsError> {
-        // Stub implementation - actual implementation depends on mdk-core API
-        // This is a placeholder to satisfy the TODO
         let _ = (group_id, member_pubkey, device_id, keypackage_ref);
-        Err(MlsError::NostrMlsError("add_member_device not yet implemented - requires mdk-core API details".to_string()))
+        Err(MlsError::NostrMlsError(
+            "add_member_device not yet implemented. Group membership management will be added in a future version.".to_string(),
+        ))
     }
 
     /// Makes the bot leave a group.
@@ -151,11 +161,16 @@ impl MlsGroup {
     ///
     /// # Returns
     /// Result indicating success or failure
+    ///
+    /// # Note
+    /// This is a placeholder function that will be implemented in a future version.
+    /// Currently, leaving groups is not supported.
+    /// This function returns an error if called.
     pub async fn leave_group(&self, group_id: &str) -> Result<(), MlsError> {
-        // Stub implementation - actual implementation depends on mdk-core API
-        // This is a placeholder to satisfy the TODO
         let _ = group_id;
-        Err(MlsError::NostrMlsError("leave_group not yet implemented - requires mdk-core API details".to_string()))
+        Err(MlsError::NostrMlsError(
+            "leave_group not yet implemented. Group leaving functionality will be added in a future version.".to_string(),
+        ))
     }
 
     /// Removes a member device from a group.
@@ -167,16 +182,21 @@ impl MlsGroup {
     ///
     /// # Returns
     /// Result indicating success or failure
+    ///
+    /// # Note
+    /// This is a placeholder function that will be implemented in a future version.
+    /// Currently, removing members is not supported.
+    /// This function returns an error if called.
     pub async fn remove_member_device_from_group(
         &self,
         group_id: &str,
         member_pubkey: &str,
         device_id: &str,
     ) -> Result<(), MlsError> {
-        // Stub implementation - actual implementation depends on mdk-core API
-        // This is a placeholder to satisfy the TODO
         let _ = (group_id, member_pubkey, device_id);
-        Err(MlsError::NostrMlsError("remove_member_device_from_group not yet implemented - requires mdk-core API details".to_string()))
+        Err(MlsError::NostrMlsError(
+            "remove_member_device_from_group not yet implemented. Member removal functionality will be added in a future version.".to_string(),
+        ))
     }
 
     /// Sends a message to a group.
@@ -187,15 +207,20 @@ impl MlsGroup {
     ///
     /// # Returns
     /// Result containing the created event or an error
+    ///
+    /// # Note
+    /// This is a placeholder function that will be implemented in a future version.
+    /// Use `Group::send_group_message()` instead, which is fully implemented.
+    /// This function returns an error if called.
     pub async fn send_group_message(
         &self,
         group_id: &str,
         message: &str,
     ) -> Result<nostr_sdk::Event, MlsError> {
-        // Stub implementation - actual implementation depends on mdk-core API
-        // This is a placeholder to satisfy the TODO
         let _ = (group_id, message);
-        Err(MlsError::NostrMlsError("send_group_message not yet implemented - requires mdk-core API details".to_string()))
+        Err(MlsError::NostrMlsError(
+            "send_group_message not yet implemented. Use Group::send_group_message() instead, which is fully implemented.".to_string(),
+        ))
     }
 
     /// Processes an incoming MLS event from a Nostr event JSON string.
@@ -205,11 +230,16 @@ impl MlsGroup {
     ///
     /// # Returns
     /// Result indicating whether the event was processed successfully
+    ///
+    /// # Note
+    /// This is a placeholder function that will be implemented in a future version.
+    /// Currently, event processing is handled internally by the MLS engine.
+    /// This function returns an error if called.
     pub async fn incoming_event(&self, event_json: &str) -> Result<bool, MlsError> {
-        // Stub implementation - actual implementation depends on mdk-core API
-        // This is a placeholder to satisfy the TODO
         let _ = event_json;
-        Err(MlsError::NostrMlsError("incoming_event not yet implemented - requires mdk-core API details".to_string()))
+        Err(MlsError::NostrMlsError(
+            "incoming_event not yet implemented. Event processing is handled internally by the MLS engine.".to_string(),
+        ))
     }
 
     /// Synchronizes group data from storage.
@@ -219,11 +249,16 @@ impl MlsGroup {
     ///
     /// # Returns
     /// Result containing the group metadata or an error
+    ///
+    /// # Note
+    /// This is a placeholder function that will be implemented in a future version.
+    /// Currently, group data is synchronized automatically when joining groups.
+    /// This function returns an error if called.
     pub async fn sync_group_data(&self, group_id: &str) -> Result<MlsGroupMetadata, MlsError> {
-        // Stub implementation - actual implementation depends on mdk-core API
-        // This is a placeholder to satisfy the TODO
         let _ = group_id;
-        Err(MlsError::NostrMlsError("sync_group_data not yet implemented - requires mdk-core API details".to_string()))
+        Err(MlsError::NostrMlsError(
+            "sync_group_data not yet implemented. Group data is synchronized automatically when joining groups.".to_string(),
+        ))
     }
 
 
