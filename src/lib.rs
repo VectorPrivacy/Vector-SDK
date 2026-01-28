@@ -24,6 +24,7 @@ pub mod mls;
 pub mod blossom;
 
 pub mod client;
+pub mod wasm;
 pub mod crypto;
 pub mod metadata;
 pub mod subscription;
