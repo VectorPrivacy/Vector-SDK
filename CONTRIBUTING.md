@@ -236,7 +236,7 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html):
 
 If you discover a security vulnerability, please:
 1. Do not open a public issue
-2. Email the maintainers directly at security@vectorprivacy.com
+2. Email the maintainers directly at security@vectorapp.io
 3. Include as much detail as possible
 
 ### Security Best Practices
