@@ -147,7 +147,7 @@ If you discover a security vulnerability in Vector SDK, please follow these step
 
 1. **Do not** open a public issue on GitHub
 2. **Do not** discuss the vulnerability in public channels
-3. **Email** the security team at: `security@vectorprivacy.com`
+3. **Email** the security team at: `security@vectorapp.io`
 4. **Include** as much detail as possible:
    - Steps to reproduce
    - Impact assessment
